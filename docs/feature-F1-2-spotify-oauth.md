@@ -90,6 +90,15 @@ Handles OAuth callback:
 - Exchanges authorization code for tokens
 - Sets encrypted token cookie
 - Redirects to success/error page
+- Uses `x-forwarded-host` and `x-forwarded-proto` headers for correct redirect URLs behind reverse proxies
+
+**Reverse Proxy Handling:**
+When deployed behind a reverse proxy (e.g., Cloudflare Tunnel, nginx, traefik), the callback route extracts the original host and protocol from headers:
+```typescript
+const host = request.headers.get('x-forwarded-host') || request.headers.get('host');
+const protocol = request.headers.get('x-forwarded-proto') || 'https';
+```
+This ensures redirects use the external URL (e.g., `https://navispot.queen.pro.et`) instead of the internal container URL (e.g., `0.0.0.0:3000`).
 
 #### `app/api/auth/refresh/route.ts`
 
@@ -118,6 +127,27 @@ Refreshes access tokens:
 1. **Token Refresh on 401**: Automatic refresh when Spotify returns 401
 2. **Pre-emptive Refresh**: Refresh before expiry to avoid API failures
 3. **Secure Headers**: All API requests include proper authorization
+
+### Deployment Considerations
+
+**Environment Variables:**
+The following environment variables must be set correctly for the OAuth flow to work:
+- `SPOTIFY_REDIRECT_URI`: Must match the Spotify app's configured redirect URI
+- `NEXT_PUBLIC_APP_URL`: The external URL of the application
+
+**Important:** These values are read at build time, not runtime. Rebuild the Docker image after changing `.env.local`.
+
+**Reverse Proxy Configuration:**
+When deploying behind a reverse proxy, ensure the proxy forwards the `x-forwarded-host` and `x-forwarded-proto` headers. The callback route uses these headers to construct correct redirect URLs.
+
+Example nginx config snippet:
+```nginx
+proxy_set_header Host $host;
+proxy_set_header X-Forwarded-Host $host;
+proxy_set_header X-Forwarded-Proto $scheme;
+```
+
+For Cloudflare Tunnel, these headers are typically forwarded automatically.
 
 ## Files Created
 
@@ -240,6 +270,7 @@ const playlists = await spotifyClient.getPlaylists();
 ✅ Callback handling and token exchange implemented
 ✅ Token refresh logic implemented (automatic + manual)
 ✅ Encrypted token storage in localStorage implemented
+✅ Reverse proxy redirect URL handling fixed
 
 ## References
 

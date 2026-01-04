@@ -2,34 +2,38 @@ import { NextRequest, NextResponse } from 'next/server';
 import { SpotifyToken } from '@/types';
 
 export async function GET(request: NextRequest) {
+  const host = request.headers.get('x-forwarded-host') || request.headers.get('host') || 'navispot.queen.pro.et';
+  const protocol = request.headers.get('x-forwarded-proto') || 'https';
+  const baseUrl = `${protocol}://${host}`;
+  
   const searchParams = request.nextUrl.searchParams;
   const code = searchParams.get('code');
   const state = searchParams.get('state');
   const error = searchParams.get('error');
 
   if (error) {
-    return NextResponse.redirect(new URL(`/?error=${error}`, request.url));
+    return NextResponse.redirect(new URL(`/?error=${error}`, baseUrl));
   }
 
   if (!code || !state) {
-    return NextResponse.redirect(new URL('/?error=missing_params', request.url));
+    return NextResponse.redirect(new URL('/?error=missing_params', baseUrl));
   }
 
   const cookieState = request.cookies.get('spotify_auth_state')?.value;
   const codeVerifier = request.cookies.get('spotify_code_verifier')?.value;
 
   if (!cookieState || cookieState !== state) {
-    return NextResponse.redirect(new URL('/?error=state_mismatch', request.url));
+    return NextResponse.redirect(new URL('/?error=state_mismatch', baseUrl));
   }
 
   if (!codeVerifier) {
-    return NextResponse.redirect(new URL('/?error=no_verifier', request.url));
+    return NextResponse.redirect(new URL('/?error=no_verifier', baseUrl));
   }
 
   try {
     const tokenData = await exchangeCodeForToken(code, codeVerifier);
     
-    const response = NextResponse.redirect(new URL('/?auth=success', request.url));
+    const response = NextResponse.redirect(new URL('/?auth=success', baseUrl));
     
     const token: SpotifyToken = {
       accessToken: tokenData.access_token,
@@ -54,7 +58,7 @@ export async function GET(request: NextRequest) {
 
     return response;
   } catch {
-    return NextResponse.redirect(new URL('/?error=token_exchange_failed', request.url));
+    return NextResponse.redirect(new URL('/?error=token_exchange_failed', baseUrl));
   }
 }
 
