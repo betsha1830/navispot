@@ -88,9 +88,24 @@ Handles OAuth callback:
 - Validates state parameter against cookie
 - Verifies code verifier matches
 - Exchanges authorization code for tokens
-- Sets encrypted token cookie
+- Sets encrypted token in httpOnly cookie
 - Redirects to success/error page
 - Uses `x-forwarded-host` and `x-forwarded-proto` headers for correct redirect URLs behind reverse proxies
+
+#### `app/api/auth/session/route.ts`
+
+Client-side session sync endpoint:
+- Reads the httpOnly `spotify_token` cookie server-side
+- Returns authentication state and token to authenticated client
+- Used by auth context to sync state after OAuth callback redirect
+- Validates token expiry and cleans up expired cookies
+
+**Why this endpoint is needed:**
+After OAuth callback redirects to `/?auth=success`, the browser has the httpOnly cookie set but the client-side auth context has no localStorage data (the token was never written there). This endpoint allows the client to sync its state by:
+1. Calling the endpoint which reads the httpOnly cookie server-side
+2. Fetching the user profile with the access token
+3. Persisting to localStorage for subsequent page loads
+4. Updating the React state to reflect authenticated status
 
 **Reverse Proxy Handling:**
 When deployed behind a reverse proxy (e.g., Cloudflare Tunnel, nginx, traefik), the callback route extracts the original host and protocol from headers:
@@ -118,10 +133,28 @@ Refreshes access tokens:
 5. **Server-Side Token Exchange**: Token exchange happens on server, not client
 
 ### Token Storage Security
-1. **Encryption at Rest**: Tokens encrypted before localStorage
-2. **Client-Side Keys**: Encryption key derived from known constant
-3. **IV Randomization**: Each encryption uses fresh random IV
-4. **Buffer Before Expiry**: Refresh 60 seconds before actual expiry
+1. **HTTP-Only Cookies**: Tokens stored in httpOnly cookies, inaccessible to JavaScript (XSS protection)
+2. **Client-Side Sync**: After OAuth callback, client syncs via `/api/auth/session` endpoint
+3. **localStorage Fallback**: Synced token persisted to localStorage for subsequent page loads
+4. **IV Randomization**: Each encryption uses fresh random IV
+5. **Buffer Before Expiry**: Refresh 60 seconds before actual expiry
+
+### Client-Side Session Sync Security
+
+The session sync pattern maintains security while enabling UI updates:
+
+```
+OAuth Callback → httpOnly Cookie Set → Client Calls /api/auth/session → 
+Server Reads Cookie → Returns Token to Client → Client Fetches User Profile → 
+Persists to localStorage → Updates UI State
+```
+
+**Security Properties:**
+- Token never directly accessible to JavaScript (httpOnly cookie)
+- Server-side validation before returning token to client
+- User profile fetch requires valid access token (proves authenticity)
+- Subsequent page loads use localStorage (cached copy)
+- Logout clears both cookie and localStorage
 
 ### API Security
 1. **Token Refresh on 401**: Automatic refresh when Spotify returns 401
@@ -161,6 +194,7 @@ For Cloudflare Tunnel, these headers are typically forwarded automatically.
 | `lib/spotify/client.ts` | Spotify API client with token management |
 | `app/api/auth/spotify/route.ts` | OAuth initiation endpoint |
 | `app/api/auth/callback/route.ts` | OAuth callback handler |
+| `app/api/auth/session/route.ts` | Session sync endpoint (client-side auth sync) |
 | `app/api/auth/refresh/route.ts` | Token refresh endpoint |
 
 ## API Endpoints
@@ -195,6 +229,39 @@ Handles OAuth callback from Spotify.
 - `spotify_code_verifier`
 - `spotify_auth_state`
 
+### GET /api/auth/session
+Client-side session sync endpoint.
+
+**Purpose:**
+Reads the httpOnly `spotify_token` cookie server-side and returns auth state to the client. Used after OAuth callback redirect to sync the client-side auth context with the cookie-based session.
+
+**Response:**
+```json
+{
+  "authenticated": true,
+  "token": {
+    "accessToken": "string",
+    "refreshToken": "string",
+    "expiresAt": 1234567890,
+    "tokenType": "Bearer",
+    "scope": "string"
+  }
+}
+```
+
+Or if not authenticated:
+```json
+{
+  "authenticated": false,
+  "error": "expired" | "invalid_token"
+}
+```
+
+**Security:**
+- Reads httpOnly cookie server-side, token never exposed directly
+- Validates token expiry and cleans up expired cookies
+- Client receives token only after server-side validation
+
 ### POST /api/auth/refresh
 Refreshes access token.
 
@@ -224,38 +291,62 @@ Refreshes access token.
    - Redirect user to returned `authUrl`
    - Complete authorization on Spotify
    - Verify callback redirects to `/?auth=success`
+   - Verify UI updates to show user profile (not "Connect Spotify" button)
 
 2. **Token Storage Test**
    - After successful auth, check `document.cookie`
    - Verify `spotify_token` exists and is encrypted
+   - Check localStorage for `spotify_auth` key with user data
 
-3. **Token Refresh Test**
+3. **Session Sync Test**
+   - After OAuth callback, clear localStorage
+   - Refresh page
+   - Verify `/api/auth/session` returns authenticated=true
+   - Verify user profile is fetched and localStorage is repopulated
+
+4. **Token Refresh Test**
    - Let token approach expiry
    - Make API call that requires valid token
    - Verify automatic refresh occurs
 
-4. **Logout Test**
+5. **Logout Test**
    - Call token clear method
    - Verify token removed from storage
    - Verify API calls fail appropriately
 
-## Integration with F1.3 Spotify API Client
+## Integration with Auth Context
 
-The OAuth client provides the foundation for F1.3 (Spotify API Client):
+The OAuth client integrates with the auth context (`lib/auth/auth-context.tsx`) for session management:
 
 ```typescript
-import { spotifyClient } from '@/lib/spotify/client';
+// Auth context flow after OAuth callback:
+// 1. loadStoredAuth() checks localStorage first
+// 2. If no localStorage data, calls /api/auth/session endpoint
+// 3. Endpoint reads httpOnly cookie server-side
+// 4. If authenticated, client fetches user profile
+// 5. Persists to localStorage for subsequent page loads
+// 6. Updates React state to reflect authenticated status
 
-// Load token from storage
-const token = await spotifyClient.loadToken();
-if (token) {
-  spotifyClient.setToken(token);
+import { useAuth } from '@/lib/auth/auth-context';
+
+function SpotifyConnectButton() {
+  const { spotify, spotifyLogin, spotifyLogout, isLoading } = useAuth();
+  
+  if (isLoading) return <Loading />;
+  
+  if (spotify.isAuthenticated && spotify.user) {
+    return <UserDisplay user={spotify.user} onLogout={spotifyLogout} />;
+  }
+  
+  return <ConnectButton onLogin={spotifyLogin} />;
 }
-
-// Use authenticated endpoints
-const user = await spotifyClient.getCurrentUser();
-const playlists = await spotifyClient.getPlaylists();
 ```
+
+The auth context ensures:
+- Initial load checks both localStorage and session cookie
+- UI always reflects current authentication state
+- Tokens are refreshed automatically before expiry
+- Logout clears all stored credentials
 
 ## Future Enhancements
 
@@ -263,14 +354,17 @@ const playlists = await spotifyClient.getPlaylists();
 - Add token migration for key changes
 - Implement secure token transfer between devices
 - Add token introspection endpoint
+- Support multiple Spotify accounts
 
 ## Status
 
 ✅ Authorization URL generation implemented (PKCE flow)
 ✅ Callback handling and token exchange implemented
 ✅ Token refresh logic implemented (automatic + manual)
-✅ Encrypted token storage in localStorage implemented
+✅ Encrypted token storage in httpOnly cookies
+✅ Client-side session sync via `/api/auth/session` endpoint
 ✅ Reverse proxy support: Extracts `x-forwarded-host` and `x-forwarded-proto` headers for correct redirect URLs in containerized deployments
+✅ UI properly updates after OAuth callback redirect
 
 ## References
 

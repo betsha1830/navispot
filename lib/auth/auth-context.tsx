@@ -95,6 +95,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }));
         await testNavidromeConnection(parsed);
       }
+
+      if (!storedSpotify) {
+        const response = await fetch('/api/auth/session');
+        const data = await response.json();
+        
+        if (data.authenticated && data.token) {
+          const response2 = await fetch('https://api.spotify.com/v1/me', {
+            headers: { Authorization: `Bearer ${data.token.accessToken}` },
+          });
+          
+          if (response2.ok) {
+            const user = await response2.json();
+            const authData = { token: data.token, user };
+            localStorage.setItem(SPOTIFY_STORAGE_KEY, JSON.stringify(authData));
+            setSpotify({
+              isAuthenticated: true,
+              token: data.token,
+              user,
+            });
+          }
+        }
+      }
     } catch (error) {
       console.error('Error loading stored auth:', error);
     } finally {
