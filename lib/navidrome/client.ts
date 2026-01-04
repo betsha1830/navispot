@@ -112,6 +112,26 @@ export class NavidromeApiClient {
     return { success: response.status === 'ok' };
   }
 
+  async replacePlaylistSongs(playlistId: string, newSongIds: string[]): Promise<{ success: boolean }> {
+    const playlistData = await this.getPlaylist(playlistId);
+    const entryIdsToRemove = playlistData.tracks.map((_, index) => index + 1);
+
+    const params: Record<string, string | string[]> = { id: playlistId };
+    
+    if (newSongIds.length > 0) {
+      params.songIdToAdd = newSongIds;
+    }
+    
+    if (entryIdsToRemove.length > 0) {
+      params.songIdToRemove = entryIdsToRemove.map(String);
+    }
+
+    const url = this._buildUrl('/rest/updatePlaylist', params);
+    const response = await this._makeRequest<{ status: string }>(url);
+
+    return { success: response.status === 'ok' };
+  }
+
   async search(query: string, options?: {
     songCount?: number;
     artistCount?: number;
