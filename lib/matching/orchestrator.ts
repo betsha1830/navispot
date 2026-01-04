@@ -2,7 +2,6 @@ import { SpotifyTrack } from '@/types/spotify';
 import { NavidromeSong } from '@/types/navidrome';
 import { TrackMatch, MatchStrategy, MatchStatus } from '@/types/matching';
 import { NavidromeApiClient } from '@/lib/navidrome/client';
-import { matchByISRC } from './isrc-matcher';
 import { matchByStrict } from './strict-matcher';
 import { findBestMatch } from './fuzzy';
 
@@ -38,6 +37,17 @@ export interface OrchestratedMatchResult {
   overallStatus: MatchStatus;
 }
 
+function normalizeTitleForSearch(title: string): string {
+  return title
+    .toLowerCase()
+    .replace(/\s*\([^)]*\)\s*/g, ' ')
+    .replace(/\s*\[[^\]]*\]\s*/g, ' ')
+    .replace(/[''`´']/g, '')
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 export async function matchTrack(
   client: NavidromeApiClient,
   spotifyTrack: SpotifyTrack,
@@ -46,20 +56,21 @@ export async function matchTrack(
   const opts: MatchingOrchestratorOptions = { ...defaultMatchingOptions, ...options };
   const strategyResults: MatchingStrategyResult[] = [];
 
-  if (opts.enableISRC) {
-    const isrcResult = await matchByISRC(client, spotifyTrack);
-    strategyResults.push({
-      strategy: 'isrc',
-      matched: isrcResult.status === 'matched',
-      ambiguous: false,
-      navidromeSong: isrcResult.navidromeSong,
-      score: isrcResult.matchScore,
-    });
+  const firstArtist = spotifyTrack.artists[0]?.name || '';
+  const titleOnly = normalizeTitleForSearch(spotifyTrack.name);
 
-    if (isrcResult.status === 'matched') {
+  // First search: title only (stripped of parentheses/special chars)
+  const titleCandidates = await client.search(titleOnly, { songCount: opts.maxFuzzyCandidates });
+
+  // Check ISRC match on title-only results
+  if (opts.enableISRC && spotifyTrack.external_ids?.isrc) {
+    const isrc = spotifyTrack.external_ids.isrc;
+    const isrcMatch = titleCandidates.find((song) => song.isrc?.[0] === isrc);
+
+    if (isrcMatch) {
       return {
         spotifyTrack,
-        navidromeSong: isrcResult.navidromeSong,
+        navidromeSong: isrcMatch,
         matchStrategy: 'isrc',
         matchScore: 1,
         status: 'matched',
@@ -67,13 +78,44 @@ export async function matchTrack(
     }
   }
 
-  if (opts.enableFuzzy) {
-    const searchQuery = `${spotifyTrack.artists.map((a) => a.name).join(' ')} ${spotifyTrack.name}`;
-    const candidates = await client.search(
-      searchQuery,
-      { songCount: opts.maxFuzzyCandidates }
-    );
+  // Second search: title (stripped) + first artist only
+  const firstArtistCandidates = await client.search(
+    `${firstArtist} ${titleOnly}`,
+    { songCount: opts.maxFuzzyCandidates }
+  );
 
+  // Check ISRC or duration match (delta < 2s) on title + first artist results
+  if (opts.enableISRC && spotifyTrack.external_ids?.isrc) {
+    const isrc = spotifyTrack.external_ids.isrc;
+    const spotifyDurationSec = spotifyTrack.duration_ms / 1000;
+    
+    const isrcMatch = firstArtistCandidates.find((song) => song.isrc?.[0] === isrc);
+    const durationMatch = firstArtistCandidates.find((song) => {
+      const navidromeDuration = song.duration;
+      const delta = Math.abs(navidromeDuration - spotifyDurationSec);
+      return delta < 2;
+    });
+
+    if (isrcMatch || durationMatch) {
+      const matchedSong = isrcMatch || durationMatch;
+      return {
+        spotifyTrack,
+        navidromeSong: matchedSong!,
+        matchStrategy: 'isrc',
+        matchScore: 1,
+        status: 'matched',
+      };
+    }
+  }
+
+  // Third search: title + all artists (normal search)
+  const searchQuery = `${spotifyTrack.artists.map((a) => a.name).join(' ')} ${spotifyTrack.name}`;
+  const candidates = await client.search(
+    searchQuery,
+    { songCount: opts.maxFuzzyCandidates }
+  );
+
+  if (opts.enableFuzzy) {
     const fuzzyResult = findBestMatch(spotifyTrack, candidates, opts.fuzzyThreshold);
     const matchResult: MatchingStrategyResult = {
       strategy: 'fuzzy',

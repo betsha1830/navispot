@@ -2,13 +2,16 @@
 
 ## Feature Overview
 
-The Matching Orchestrator feature chains multiple track matching strategies (ISRC → Fuzzy → Strict) to maximize the likelihood of successfully matching Spotify tracks to Navidrome songs. It provides a unified interface for track matching with configurable strategies and comprehensive statistics.
+The Matching Orchestrator feature chains multiple track matching strategies (ISRC → Duration → Fuzzy → Strict) to maximize the likelihood of successfully matching Spotify tracks to Navidrome songs. It provides a unified interface for track matching with configurable strategies and comprehensive statistics.
 
 ### Purpose and Functionality
 
 The matching orchestrator enables the application to:
 
-- Chain matching strategies in priority order (ISRC → Fuzzy → Strict)
+- Perform multi-step searches (title only → title + first artist → title + all artists)
+- Check ISRC matches on search results
+- Use duration-based matching as fallback (delta < 2 seconds)
+- Chain matching strategies in priority order
 - Track which strategy succeeded for each match
 - Collect ambiguous matches requiring manual review
 - Provide configurable matching options
@@ -17,15 +20,56 @@ The matching orchestrator enables the application to:
 
 ## Sub-tasks Implemented
 
-### Chain Matching Strategies
+### Multi-Step Search Process
 
-The orchestrator attempts matching strategies in the following order:
+The orchestrator performs up to three searches with increasing specificity:
 
-1. **ISRC Matching** (highest priority) - Uses International Standard Recording Code for precise identification
-2. **Fuzzy Matching** - Uses Levenshtein distance for similarity-based matching
-3. **Strict Matching** - Uses exact string matching on artist + title
+1. **Search 1**: Title only (stripped of parentheses and special characters)
+   - Checks for ISRC match on results
+   - If match found, returns immediately as ISRC match
 
-The chain stops at the first successful match, ensuring optimal accuracy.
+2. **Search 2**: Title (stripped) + first artist only
+   - Checks for ISRC match OR duration match (delta < 2 seconds)
+   - If match found, returns as ISRC match
+
+3. **Search 3**: Title + all artists (normal search)
+   - Falls back to fuzzy matching
+   - If fuzzy fails, falls back to strict matching
+
+### Title Normalization
+
+The `normalizeTitleForSearch` function strips special characters for cleaner searches:
+
+```typescript
+function normalizeTitleForSearch(title: string): string {
+  return title
+    .toLowerCase()
+    .replace(/\s*\([^)]*\)\s*/g, ' ')      // Remove parentheses
+    .replace(/\s*\[[^\]]*\]\s*/g, ' ')      // Remove square brackets
+    .replace(/[''`´']/g, '')                 // Remove apostrophe variants
+    .replace(/[^a-z0-9\s]/g, ' ')            // Remove special characters
+    .replace(/\s+/g, ' ')                    // Collapse spaces
+    .trim();
+}
+```
+
+### ISRC and Duration Matching
+
+For the second search step, both ISRC and duration are checked:
+
+```typescript
+const isrcMatch = candidates.find((song) => song.isrc?.[0] === isrc);
+const durationMatch = candidates.find((song) => {
+  const navidromeDuration = song.duration;
+  const spotifyDurationSec = spotifyTrack.duration_ms / 1000;
+  const delta = Math.abs(navidromeDuration - spotifyDurationSec);
+  return delta < 2;
+});
+
+if (isrcMatch || durationMatch) {
+  return matched song;
+}
+```
 
 ### Track Which Strategy Succeeded
 
@@ -46,33 +90,13 @@ interface TrackMatch {
 
 When fuzzy matching returns multiple close candidates (within 0.05 of the best score), the result is marked as 'ambiguous' with all candidates included for manual review.
 
-### Debug Logging
-
-The matching process includes comprehensive debug logging to aid troubleshooting:
-
-- **Search queries**: Shows the query sent to Navidrome for fuzzy matching
-- **Candidate counts**: Reports how many candidates were returned
-- **Match scores**: Logs similarity scores for each candidate
-- **Match decisions**: Shows why matches were accepted or rejected
-- **Close calls**: Logs candidates that were close to the threshold
-
-Example log output:
-```
-[Matching] Fuzzy search for: "Halo Martin O'Donnell Michael Salvatori Halo"
-[Matching] Received 20 candidates from search
-[Fuzzy Match] Processing 20 candidates for track: "Halo" by "Martin O'Donnell, Michael Salvatori"
-[Fuzzy Match] Found 1 matches above threshold 0.8
-[Fuzzy Match] Best match: "Halo" by "Halo" with score 0.867
-```
-
 ## File Structure
 
 ```
 lib/matching/
 ├── orchestrator.ts    # Matching orchestrator implementation
-├── isrc-matcher.ts   # ISRC matching strategy
-├── fuzzy.ts          # Fuzzy matching strategy
-└── strict-matcher.ts # Strict matching strategy
+├── fuzzy.ts           # Fuzzy matching strategy
+└── strict-matcher.ts  # Strict matching strategy
 ```
 
 ### lib/matching/orchestrator.ts
@@ -81,8 +105,8 @@ This file contains the orchestrator implementation:
 
 - `MatchingOrchestratorOptions` - Configuration interface for matching behavior
 - `defaultMatchingOptions` - Default configuration values
+- `normalizeTitleForSearch()` - Title normalization for searches
 - `MatchingStrategyResult` - Individual strategy result
-- `OrchestratedMatchResult` - Complete match result with all strategy attempts
 - `matchTrack()` - Match a single Spotify track
 - `matchTracks()` - Match multiple tracks in batch
 - `getMatchStatistics()` - Calculate match statistics
@@ -197,9 +221,10 @@ async function matchTrack(
 **Returns:** A Promise resolving to a `TrackMatch` object.
 
 **Behavior:**
-- Attempts ISRC matching first if enabled
-- Falls back to fuzzy matching if ISRC fails and enabled
-- Falls back to strict matching if fuzzy fails and enabled
+- Search 1: Title only → check ISRC
+- Search 2: Title + first artist → check ISRC OR duration (delta < 2s)
+- Search 3: Title + all artists → fuzzy matching → strict matching
+- Returns matched status with first successful match strategy
 - Returns ambiguous status if fuzzy returns multiple close candidates
 - Returns unmatched if no strategies succeed
 
@@ -237,6 +262,17 @@ function getMatchStatistics(matches: TrackMatch[]): {
 
 **Returns:** Statistics object with counts and strategy breakdown.
 
+### Function: normalizeTitleForSearch
+
+```typescript
+function normalizeTitleForSearch(title: string): string
+```
+
+**Parameters:**
+- `title` (string) - The track title to normalize
+
+**Returns:** A normalized title string with parentheses, brackets, and special characters removed.
+
 ### Interface: MatchingOrchestratorOptions
 
 ```typescript
@@ -251,27 +287,76 @@ interface MatchingOrchestratorOptions {
 
 ## Matching Chain Details
 
+### Multi-Step Search Process
+
+The orchestrator uses a three-step search approach with ISRC/duration checking:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│ Step 1: Search by title only (normalized)                       │
+│ Query: "not giving in"                                          │
+│ Check: ISRC match on results                                    │
+│ If match: Return as ISRC match (score: 1.0)                     │
+└─────────────────────────────────────────────────────────────────┘
+                              ↓ No ISRC match
+┌─────────────────────────────────────────────────────────────────┐
+│ Step 2: Search by title (normalized) + first artist             │
+│ Query: "rudimental not giving in"                               │
+│ Check: ISRC match OR duration match (delta < 2s)                │
+│ If match: Return as ISRC match (score: 1.0)                     │
+└─────────────────────────────────────────────────────────────────┘
+                              ↓ No match
+┌─────────────────────────────────────────────────────────────────┐
+│ Step 3: Search by title + all artists                           │
+│ Query: "rudimental john newman alex clare not giving in"        │
+│ Fuzzy: Find best match above threshold (default: 0.8)           │
+│ If match (and not ambiguous): Return as fuzzy match             │
+│ Strict: Exact match on normalized artist + title                │
+│ If match: Return as strict match                                │
+└─────────────────────────────────────────────────────────────────┘
+                              ↓ No match
+┌─────────────────────────────────────────────────────────────────┐
+│ Return unmatched (status: 'unmatched', matchStrategy: 'none')   │
+└─────────────────────────────────────────────────────────────────┘
+```
+
 ### Priority Order
 
 1. **ISRC (highest priority)**
    - Most accurate method when ISRC codes are available
-   - Exact match on ISRC code
+   - Checked on Search 1 results
+   - Also checked on Search 2 results with duration fallback
    - Returns immediately if match found
 
-2. **Fuzzy Matching**
+2. **Duration (Search 2 fallback)**
+   - Used when ISRC doesn't match in Search 2
+   - Matches if duration delta < 2 seconds
+   - Combined with ISRC as OR condition
+
+3. **Fuzzy Matching**
    - Handles minor variations in artist/title names
+   - Uses Levenshtein distance-based similarity scoring
    - Configurable similarity threshold
    - Detects ambiguous matches (multiple close candidates)
    - Proceeds to strict matching if no match or ambiguous
 
-3. **Strict Matching**
+4. **Strict Matching**
    - Fallback for remaining unmatched tracks
    - Exact match on normalized artist + title
    - Final attempt before marking as unmatched
 
+### Duration Matching
+
+Duration matching uses a 2-second threshold:
+
+- **Less than 2 seconds difference**: Considered a match
+- **2 or more seconds difference**: Not a match
+
+This is used as a fallback in Search 2 when ISRC doesn't match, providing a quick validation method for tracks that might have slightly different metadata.
+
 ### Match Status
 
-- **matched**: Unique high-confidence match found
+- **matched**: Unique high-confidence match found (ISRC, duration, fuzzy, or strict)
 - **ambiguous**: Multiple similar candidates exist (requires manual review)
 - **unmatched**: No suitable match found after trying all strategies
 
@@ -279,10 +364,9 @@ interface MatchingOrchestratorOptions {
 
 This feature depends on:
 
-- **F2.1 (ISRC Matching)** - Uses `matchByISRC` function
 - **F2.2 (Fuzzy Matching)** - Uses `findBestMatch` function
 - **F2.3 (Strict Matching)** - Uses `matchByStrict` function
-- **F1.4 (Navidrome API Client)** - Uses `search` method for fuzzy matching candidates
+- **F1.4 (Navidrome API Client)** - Uses `search` method for fetching candidates
 
 The Matching Orchestrator is in turn a dependency for:
 
@@ -322,14 +406,15 @@ const lenientOptions = {
 
 ## Performance Considerations
 
+- Multi-step search may require up to 3 API calls per track
 - Batch matching processes tracks sequentially to avoid overwhelming the Navidrome API
 - Fuzzy matching fetches candidates with configurable limits
 - Consider rate limiting for large playlists (100+ tracks)
-- Caching normalized strings could improve batch performance
+- Title normalization helps reduce search complexity
 
 ## Error Handling
 
-- ISRC errors fall through to fuzzy matching
+- ISRC/duration matching errors fall through to fuzzy matching
 - Fuzzy matching errors fall through to strict matching
 - Strict matching errors result in unmatched status
 - Network errors are caught and handled gracefully
@@ -354,9 +439,10 @@ The code passes all ESLint checks with the project's configuration. This include
 **Last Updated:** January 4, 2026
 
 **Update Notes (January 4, 2026):**
-- Added comprehensive debug logging to aid troubleshooting
-- Updated fuzzy matching to handle exact title matches with different artist names
-- Added duration-based matching (3-second threshold) for better track version detection
-- Added album name normalization and similarity scoring for soundtrack matching
-- Improved matching for classical music, video game soundtracks, and soundtracks
-- Log output now shows search queries, candidate counts, duration differences, and match scores
+- Fixed ISRC matching bug where Navidrome API doesn't accept ISRC as search query
+- Implemented multi-step search approach (title only → title + first artist → title + all artists)
+- Added `normalizeTitleForSearch()` function to strip parentheses and special characters
+- Added duration-based matching (delta < 2 seconds) as fallback in Search 2
+- Changed ISRC matching to check on search results instead of separate API call
+- Removed `searchByISRC` method from NavidromeApiClient
+- Updated matching flow to integrate ISRC/duration checks directly in orchestrator

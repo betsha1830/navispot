@@ -72,6 +72,22 @@ export function calculateSimilarity(str1: string, str2: string): number {
   return 1.0 - distance / maxLength;
 }
 
+export function calculateArtistSimilarity(
+  spotifyArtist: string,
+  navidromeArtist: string
+): number {
+  const normalizedSpotify = normalizeArtistName(spotifyArtist);
+  const normalizedNavidrome = normalizeArtistName(navidromeArtist);
+
+  if (normalizedSpotify === normalizedNavidrome) return 1.0;
+
+  const maxLength = Math.max(normalizedSpotify.length, normalizedNavidrome.length);
+  if (maxLength === 0) return 1.0;
+
+  const distance = levenshteinDistance(normalizedSpotify, normalizedNavidrome);
+  return 1.0 - distance / maxLength;
+}
+
 const DURATION_THRESHOLD_MS = 3000;
 
 export function calculateDurationSimilarity(
@@ -106,6 +122,17 @@ const LIVE_INDICATORS = [
   'live'
 ];
 
+const COLLABORATION_INDICATORS = [
+  'feat', 'feat.', 'ft', 'ft.',
+  'with', ' x ', ' X ',
+  ' and ', ' & ',
+  ' vs ', ' versus ',
+  ' presents ', ' presenting ',
+  ' pres. ', ' pres ',
+  ' prod ', ' produced by ',
+  'DJ '
+];
+
 export function normalizeAlbumName(album: string): string {
   let normalized = album.toLowerCase();
   for (const word of SOUNDTRACK_WORDS) {
@@ -118,6 +145,15 @@ export function normalizeAlbumName(album: string): string {
 export function normalizeTitle(title: string): string {
   let normalized = title.toLowerCase();
   for (const indicator of LIVE_INDICATORS) {
+    normalized = normalized.replace(new RegExp(indicator.replace(/[()]/g, '\\$&'), 'gi'), ' ');
+  }
+  normalized = normalizeString(normalized);
+  return normalized.replace(/\s+/g, ' ').trim();
+}
+
+export function normalizeArtistName(artist: string): string {
+  let normalized = artist.toLowerCase();
+  for (const indicator of COLLABORATION_INDICATORS) {
     normalized = normalized.replace(new RegExp(indicator.replace(/[()]/g, '\\$&'), 'gi'), ' ');
   }
   normalized = normalizeString(normalized);
@@ -168,7 +204,7 @@ export function calculateTrackSimilarity(
   spotifyTrack: import('@/types/spotify').SpotifyTrack,
   navidromeSong: import('@/types/navidrome').NavidromeSong
 ): number {
-  const artistSimilarity = calculateSimilarity(
+  const artistSimilarity = calculateArtistSimilarity(
     spotifyTrack.artists.map((a) => a.name).join(' '),
     navidromeSong.artist
   );

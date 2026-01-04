@@ -8,11 +8,19 @@ The ISRC (International Standard Recording Code) Matching feature provides a hig
 
 The ISRC matching feature enables the application to:
 - Extract ISRC codes from Spotify track metadata
-- Search Navidrome's library for songs with matching ISRC codes
+- Search Navidrome's library using title-based queries
+- Check if returned songs have matching ISRC codes
+- Use duration matching as a fallback (delta < 2 seconds)
 - Return precise match results with full song details
 - Handle cases where ISRC codes are missing or not found
 
 ISRC matching is the highest priority strategy in the matching chain because it provides the most reliable identification of recordings across different platforms and releases.
+
+### Navidrome API Limitation
+
+**Important:** Navidrome's Subsonic API does not accept ISRC codes as search queries. The `search3` endpoint only works with text-based queries (artist name, track title, etc.).
+
+This means ISRC matching cannot be done as a standalone search. Instead, the implementation searches by title and checks ISRC matches on the returned results.
 
 ## Sub-tasks Implemented
 
@@ -29,28 +37,24 @@ The implementation handles cases where:
 - The `isrc` property is missing from `external_ids`
 - The ISRC code is present but the song doesn't exist in Navidrome
 
-### Search Navidrome by ISRC
+### Check ISRC on Search Results
 
-The `NavidromeApiClient` class now includes a `searchByISRC` method that:
-- Uses the Subsonic `search3` endpoint to search for songs
-- Filters results to find exact ISRC matches
-- Returns the matched song or `null` if no match exists
+Since Navidrome doesn't support ISRC search, the implementation:
+1. Performs a text-based search by title (and optionally first artist)
+2. Checks if any returned songs have matching ISRC codes
+3. Falls back to duration-based matching (delta < 2 seconds) if ISRC doesn't match
 
 ```typescript
-async searchByISRC(isrc: string): Promise<NavidromeSong | null> {
-  const url = this._buildUrl('/rest/search3', {
-    query: isrc,
-    songCount: '10',
-  });
+const isrcMatch = candidates.find((song) => song.isrc?.[0] === isrc);
+const durationMatch = candidates.find((song) => {
+  const navidromeDuration = song.duration;
+  const spotifyDurationSec = spotifyTrack.duration_ms / 1000;
+  const delta = Math.abs(navidromeDuration - spotifyDurationSec);
+  return delta < 2;
+});
 
-  const response = await this._makeRequest<{
-    searchResult3: SearchResult3;
-  }>(url);
-
-  const songs = response.searchResult3?.song || [];
-  const match = songs.find((song) => song.isrc === isrc);
-
-  return match || null;
+if (isrcMatch || durationMatch) {
+  // Match found via ISRC or duration
 }
 ```
 
@@ -58,8 +62,8 @@ async searchByISRC(isrc: string): Promise<NavidromeSong | null> {
 
 The matching function returns a `TrackMatch` object with:
 - `status`: 'matched' if a song is found, 'unmatched' otherwise
-- `matchStrategy`: Always 'isrc' for this matching function
-- `matchScore`: 1.0 for matches, 0.0 for no matches
+- `matchStrategy`: 'isrc' for ISRC/duration matches, 'fuzzy' or 'strict' for other matches
+- `matchScore`: 1.0 for ISRC/duration matches, 0.0 for no matches
 - `navidromeSong`: The matched song details (if found)
 - `spotifyTrack`: Reference to the original Spotify track
 
@@ -68,8 +72,7 @@ The matching function returns a `TrackMatch` object with:
 ```
 types/matching.ts            # Type definitions for track matching
 types/navidrome.ts           # Navidrome types including isrc field
-lib/navidrome/client.ts      # API client with searchByISRC method
-lib/matching/isrc-matcher.ts # ISRC matching implementation
+lib/matching/orchestrator.ts # ISRC matching integrated in orchestrator
 ```
 
 ### types/matching.ts
@@ -80,25 +83,20 @@ This file contains the type definitions for track matching:
 - `MatchStatus` - Union type for match status ('matched' | 'ambiguous' | 'unmatched')
 - `TrackMatch` - Interface representing a complete match result with all metadata
 
-### lib/matching/isrc-matcher.ts
+### lib/matching/orchestrator.ts
 
-This file contains the ISRC matching implementation:
+This file contains the multi-step ISRC matching implementation:
 
-- `matchByISRC` - Async function that matches a Spotify track to a Navidrome song using ISRC
-
-### lib/navidrome/client.ts
-
-This file now includes:
-
-- `searchByISRC` - Method to search for songs by ISRC code
+- `normalizeTitleForSearch()` - Strips parentheses and special characters from title
+- `matchTrack()` - Orchestrates the matching chain with ISRC checks
 
 ## Usage Examples
 
-### Basic ISRC Matching
+### ISRC Matching Flow
 
 ```typescript
 import { NavidromeApiClient } from '@/lib/navidrome/client';
-import { matchByISRC } from '@/lib/matching/isrc-matcher';
+import { matchTrack } from '@/lib/matching/orchestrator';
 
 const client = new NavidromeApiClient(
   'https://navidrome.example.com',
@@ -116,10 +114,10 @@ const spotifyTrack = {
   external_urls: { spotify: 'https://open.spotify.com/track/...' }
 };
 
-const result = await matchByISRC(client, spotifyTrack);
+const result = await matchTrack(client, spotifyTrack);
 
 console.log(result.status); // 'matched' or 'unmatched'
-console.log(result.matchStrategy); // 'isrc'
+console.log(result.matchStrategy); // 'isrc', 'fuzzy', 'strict', or 'none'
 console.log(result.matchScore); // 1.0 or 0.0
 if (result.navidromeSong) {
   console.log(result.navidromeSong.title);
@@ -140,26 +138,28 @@ const trackWithoutIsrc = {
   external_urls: { spotify: 'https://open.spotify.com/track/...' }
 };
 
-const result = await matchByISRC(client, trackWithoutIsrc);
-console.log(result.status); // 'unmatched'
-console.log(result.matchScore); // 0.0
-console.log(result.navidromeSong); // undefined
+const result = await matchTrack(client, trackWithoutIsrc);
+console.log(result.status); // 'unmatched' or 'fuzzy'/'strict' if title matches
+console.log(result.matchScore); // 1.0 or 0.0
+console.log(result.navidromeSong); // undefined if no match
 ```
 
 ## API Reference
 
-### Function: matchByISRC
+### Function: matchTrack
 
 ```typescript
-async function matchByISRC(
+async function matchTrack(
   client: NavidromeApiClient,
-  spotifyTrack: SpotifyTrack
+  spotifyTrack: SpotifyTrack,
+  options?: Partial<MatchingOrchestratorOptions>
 ): Promise<TrackMatch>
 ```
 
 **Parameters:**
 - `client` (NavidromeApiClient) - An authenticated Navidrome API client instance
 - `spotifyTrack` (SpotifyTrack) - A Spotify track object containing the track metadata
+- `options` (MatchingOrchestratorOptions, optional) - Custom matching options
 
 **Returns:** A Promise resolving to a `TrackMatch` object with the following structure:
 
@@ -168,63 +168,84 @@ interface TrackMatch {
   spotifyTrack: SpotifyTrack;
   navidromeSong?: NavidromeSong;
   matchScore: number;
-  matchStrategy: 'isrc';
-  status: 'matched' | 'unmatched';
+  matchStrategy: 'isrc' | 'fuzzy' | 'strict' | 'none';
+  status: 'matched' | 'ambiguous' | 'unmatched';
   candidates?: NavidromeSong[];
 }
 ```
 
 **Behavior:**
-- If the Spotify track has an ISRC code and a matching song exists in Navidrome, returns a match with `status: 'matched'` and `matchScore: 1`
-- If the Spotify track has an ISRC code but no matching song exists, returns `status: 'unmatched'` with `matchScore: 0`
-- If the Spotify track doesn't have an ISRC code, returns `status: 'unmatched'` with `matchScore: 0`
-- If an error occurs during the search, returns `status: 'unmatched'` with `matchScore: 0`
+- Performs multi-step search (title only → title + first artist → title + all artists)
+- Checks ISRC match on first two search results
+- Falls back to duration matching (delta < 2s) on second search if ISRC not found
+- If ISRC/duration match found, returns with `status: 'matched'` and `matchStrategy: 'isrc'`
+- Falls back to fuzzy matching if no ISRC/duration match
+- Falls back to strict matching if fuzzy fails
+- Returns `status: 'unmatched'` if no strategies succeed
 
-### Method: searchByISRC (NavidromeApiClient)
+### Function: normalizeTitleForSearch
 
 ```typescript
-async searchByISRC(isrc: string): Promise<NavidromeSong | null>
+function normalizeTitleForSearch(title: string): string
 ```
 
 **Parameters:**
-- `isrc` (string) - The ISRC code to search for
+- `title` (string) - The track title to normalize
 
-**Returns:** A Promise resolving to the matching `NavidromeSong` object, or `null` if no match is found or an error occurs.
+**Returns:** A normalized title string with:
+- Parentheses and their contents removed
+- Square brackets and their contents removed
+- All text converted to lowercase
+- Special characters removed
+- Multiple spaces collapsed to single space
 
 ## Integration with Matching Chain
 
-ISRC matching is the highest priority strategy in the matching chain (F2.4 Matching Orchestrator):
+ISRC matching is the highest priority strategy in the matching chain (F2.4 Matching Orchestrator). The multi-step search process:
 
 ```
-Priority Order:
-1. ISRC (highest priority - most accurate)
-2. Fuzzy matching (configurable threshold)
-3. Strict matching (fallback)
-4. Skip unmatched tracks
+Step 1: Search by title only (normalized)
+        ↓
+        Check ISRC match → ISRC match found? → Return matched
+        ↓ No
+Step 2: Search by title (normalized) + first artist
+        ↓
+        Check ISRC match OR duration match (delta < 2s)
+        → Match found? → Return matched
+        ↓ No
+Step 3: Search by title + all artists
+        ↓
+        Fuzzy matching with similarity threshold
+        → Match found? → Return matched
+        ↓ No
+Step 4: Strict matching (exact artist + title)
+        → Match found? → Return matched
+        ↓ No
+Return unmatched
 ```
 
-When implementing the matching orchestrator, ISRC matching should be attempted first:
+## Matching Strategy Priority
 
-```typescript
-async function matchTrack(
-  client: NavidromeApiClient,
-  spotifyTrack: SpotifyTrack
-): Promise<TrackMatch> {
-  // Try ISRC first (highest accuracy)
-  const isrcMatch = await matchByISRC(client, spotifyTrack);
-  if (isrcMatch.status === 'matched') {
-    return isrcMatch;
-  }
+1. **ISRC (highest priority)**
+   - Most accurate method when ISRC codes are available
+   - Checks ISRC match on title-only search results
+   - Falls back to duration matching (delta < 2s) on title + first artist search
+   - Returns immediately if match found
 
-  // Fall back to other strategies...
-}
-```
+2. **Fuzzy Matching**
+   - Handles minor variations in artist/title names
+   - Uses Levenshtein distance-based similarity scoring
+   - Configurable similarity threshold (default: 0.8)
+
+3. **Strict Matching**
+   - Fallback for remaining unmatched tracks
+   - Exact match on normalized artist + title
 
 ## Dependencies
 
-This feature depends on **F1.5 (Search Functionality)** for:
-- The `search3` endpoint wrapper
-- Type definitions for `SearchResult3`
+This feature depends on **F1.4 (Navidrome API Client)** for:
+- The `search` method for fetching candidate songs
+- Type definitions for `SearchResult3` and `NavidromeSong`
 - Error handling patterns
 
 The ISRC matching is in turn a dependency for:
@@ -247,6 +268,12 @@ The code passes all ESLint checks with the project's configuration. This include
 
 **Status:** Completed
 
-**Last Verified:** January 4, 2026
+**Last Updated:** January 4, 2026
 
-The ISRC Matching feature is fully implemented and verified. All sub-tasks have been completed, the code passes static analysis checks, and the implementation is ready for use by dependent features.
+**Update Notes (January 4, 2026):**
+- Fixed ISRC matching bug where Navidrome API doesn't accept ISRC as search query
+- Changed from separate ISRC search to checking ISRC on title-based search results
+- Added multi-step search approach (title only → title + first artist → title + all artists)
+- Added duration-based fallback matching (delta < 2 seconds) for second search step
+- Removed `searchByISRC` method from NavidromeApiClient
+- Updated matching orchestrator to integrate ISRC checks directly in search flow
