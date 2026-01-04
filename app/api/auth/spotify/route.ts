@@ -20,6 +20,14 @@ export async function GET() {
   const authUrl = `https://accounts.spotify.com/authorize?${params.toString()}`;
   
   const response = NextResponse.json({ authUrl, state });
+
+  response.cookies.set('spotify_auth_state', state, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    maxAge: 60 * 10,
+    path: '/',
+  });
   
   response.cookies.set('spotify_code_verifier', codeVerifier, {
     httpOnly: true,
