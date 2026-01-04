@@ -257,6 +257,151 @@ NEXT_PUBLIC_APP_URL=http://localhost:3000
 - Export options
 - Results reporting
 
+---
+
+## Features Breakdown by Phase
+
+### Phase 1: Foundation
+*Goal: Set up infrastructure and authentication*
+
+| Feature | Sub-tasks | Dependencies |
+|---------|-----------|--------------|
+| **F1.1 Project Setup** | - Configure TypeScript, ESLint, Tailwind<br>- Create folder structure<br>- Set up environment variables template | None |
+| **F1.2 Spotify OAuth Client** | - Implement authorization URL generation<br>- Handle callback and token exchange<br>- Token refresh logic<br>- Store encrypted tokens in localStorage | F1.1 |
+| **F1.3 Spotify API Client** | - GET `/v1/me/playlists` endpoint wrapper<br>- GET `/v1/playlists/{id}/tracks` with pagination<br>- Rate limiting utilities | F1.2 |
+| **F1.4 Navidrome API Client** | - Basic Auth header generation<br>- Subsonic `ping` endpoint test<br>- `getPlaylists` wrapper<br>- `createPlaylist` / `updatePlaylist` wrappers | F1.1 |
+| **F1.5 Search Functionality** | - Implement `search3` endpoint wrapper<br>- Song search utility function | F1.4 |
+| **F1.6 Auth Context** | - Create AuthContext for global state<br>- Persist Spotify tokens to localStorage<br>- Persist Navidrome credentials to localStorage<br>- Provide auth status and methods to components | F1.2, F1.4 |
+
+### Phase 2: Core Features
+*Goal: Implement matching algorithms and export logic*
+
+| Feature | Sub-tasks | Dependencies |
+|---------|-----------|--------------|
+| **F2.1 Track Matching - ISRC** | - Extract ISRC from Spotify track<br>- Search Navidrome by ISRC<br>- Return match or null | F1.5 |
+| **F2.2 Track Matching - Fuzzy** | - Implement string normalization<br>- Calculate Levenshtein distance<br>- Implement similarity scoring (0-1)<br>- Apply configurable threshold | F1.5 |
+| **F2.3 Track Matching - Strict** | - Normalize artist and title strings<br>- Exact match comparison<br>- Return single match or none | F1.5 |
+| **F2.4 Matching Orchestrator** | - Chain matching strategies (ISRC → Fuzzy → Strict)<br>- Track which strategy succeeded<br>- Collect ambiguous matches for review | F2.1, F2.2, F2.3 |
+| **F2.5 Playlist Fetching** | - Fetch all user playlists from Spotify<br>- Calculate total tracks per playlist<br>- Handle pagination for large playlists | F1.3 |
+| **F2.6 Track Fetcher** | - Fetch all tracks for a playlist<br>- Handle Spotify pagination (100 tracks/page)<br>- Store track data structure | F1.3 |
+| **F2.7 Batch Matcher** | - Process all tracks in playlist<br>- Show progress during matching<br>- Collect match results with statistics | F2.4, F2.6 |
+| **F2.8 Playlist Exporter** | - Create new playlist in Navidrome<br>- Add matched tracks via `updatePlaylist`<br>- Handle partial failures gracefully | F1.4, F2.7 |
+
+### Phase 3: UI/UX
+*Goal: Build user interface for authentication and export*
+
+| Feature | Sub-tasks | Dependencies |
+|---------|-----------|--------------|
+| **F3.1 Login Page** | - Spotify "Connect" button<br>- Navidrome credentials form<br>- Connection status indicators | F1.6 |
+| **F3.2 Dashboard** | - Grid/list of Spotify playlists<br>- Playlist thumbnails and metadata<br>- Export status badges<br>- Select multiple playlists for bulk export | F2.5 |
+| **F3.3 Playlist Detail View** | - Track list with columns (title, artist, album)<br>- Match status column (color-coded)<br>- Matched/unmatched counts summary | F2.7 |
+| **F3.4 Match Status Indicators** | - Green: matched (with match type)<br>- Yellow: ambiguous (show candidate count)<br>- Red: unmatched<br>- Tooltip with match details | F2.7 |
+| **F3.5 Export Preview** | - Show export options (create/append/overwrite)<br>- Preview of matched vs unmatched count<br>- Confirm dialog with statistics | F2.8 |
+| **F3.6 Progress Tracker** | - Real-time progress bar<br>- Current track being processed<br>- Success/fail counters<br>- Cancel export button | F2.7, F2.8 |
+| **F3.7 Results Report** | - Summary cards (total, matched, unmatched)<br>- List of unmatched tracks<br>- Export log download option<br>- "Export again" quick action | F2.8 |
+
+### Phase 4: Polish
+*Goal: Error handling, settings, and refinements*
+
+| Feature | Sub-tasks | Dependencies |
+|---------|-----------|--------------|
+| **F4.1 Error Boundary** | - Global error boundary component<br>- Graceful error display<br>- Retry actions for transient errors | F3.1 |
+| **F4.2 Retry Logic** | - Implement exponential backoff<br>- Auto-retry failed API calls<br>- Manual retry for user-initiated actions | F1.3, F1.4 |
+| **F4.3 Rate Limiter** | - Queue API requests<br>- Delay between requests<br>- Progress indicator during rate limit wait | F1.3, F1.4 |
+| **F4.4 Match Settings Panel** | - Toggle strategies on/off<br>- Fuzzy threshold slider (0.5-1.0)<br>- Preferred strategy order<br>- Save settings to localStorage | F2.4 |
+| **F4.5 Export Options UI** | - Radio buttons for mode (create/append/overwrite)<br>- "Skip unmatched" toggle<br>- "Keep existing matches" toggle<br>- Save as default preferences | F3.5 |
+| **F4.6 Ambiguous Match Resolver** | - Modal showing all candidates<br>- Candidate preview (play snippet?)<br>- Select best match or skip<br>- "Remember choice" checkbox | F2.4, F3.4 |
+| **F4.7 Toast Notifications** | - Success notifications<br>- Error notifications<br>- Info notifications (e.g., "3 tracks matched via ISRC")<br>- Notification queue with dismissal | All Phase 3 |
+| **F4.8 Loading States** | - Skeleton loaders for playlist grid<br>- Spinners for API calls<br>- Progress bars for long operations<br>- Disable interactions during loading | All Phase 3 |
+| **F4.9 Accessibility** | - Keyboard navigation<br>- ARIA labels for status indicators<br>- Focus management in modals<br>- Screen reader support | All Phase 3 |
+| **F4.10 Responsive Design** | - Mobile-friendly playlist grid<br>- Collapsible track list on small screens<br>- Touch-friendly buttons | All Phase 3 |
+
+---
+
+## Feature Dependency Graph
+
+```
+Phase 1 (Foundation)
+├── F1.1 Project Setup
+├── F1.2 Spotify OAuth Client
+│   └── F1.3 Spotify API Client
+│       └── F2.5 Playlist Fetching
+│           └── F3.2 Dashboard
+├── F1.4 Navidrome API Client
+│   ├── F1.5 Search Functionality
+│   │   ├── F2.1 ISRC Matching
+│   │   ├── F2.2 Fuzzy Matching
+│   │   └── F2.3 Strict Matching
+│   └── F2.4 Matching Orchestrator
+└── F1.6 Auth Context
+    └── F3.1 Login Page
+
+Phase 2 (Core)
+├── F2.1 ISRC Matching
+├── F2.2 Fuzzy Matching
+├── F2.3 Strict Matching
+├── F2.4 Matching Orchestrator
+│   └── F2.7 Batch Matcher
+│       ├── F3.3 Playlist Detail View
+│       └── F3.4 Match Status Indicators
+├── F2.5 Playlist Fetching
+│   └── F3.2 Dashboard
+├── F2.6 Track Fetcher
+├── F2.7 Batch Matcher
+│   └── F2.8 Playlist Exporter
+│       ├── F3.5 Export Preview
+│       ├── F3.6 Progress Tracker
+│       └── F3.7 Results Report
+
+Phase 3 (UI/UX)
+├── F3.1 Login Page
+├── F3.2 Dashboard
+├── F3.3 Playlist Detail View
+├── F3.4 Match Status Indicators
+├── F3.5 Export Preview
+├── F3.6 Progress Tracker
+└── F3.7 Results Report
+
+Phase 4 (Polish)
+├── F4.1 Error Boundary
+├── F4.2 Retry Logic
+├── F4.3 Rate Limiter
+├── F4.4 Match Settings Panel
+├── F4.5 Export Options UI
+├── F4.6 Ambiguous Match Resolver
+├── F4.7 Toast Notifications
+├── F4.8 Loading States
+├── F4.9 Accessibility
+└── F4.10 Responsive Design
+```
+
+---
+
+## Estimated Effort
+
+| Phase | Features | Complexity |
+|-------|----------|------------|
+| Phase 1 | 6 features | Medium |
+| Phase 2 | 8 features | High (matching algorithms) |
+| Phase 3 | 7 features | Medium |
+| Phase 4 | 10 features | Low-Medium |
+
+---
+
+## Recommended Implementation Order
+
+1. **Start with Phase 1 + Phase 2** (core functionality)
+   - API clients and matching algorithms form the foundation
+   - Can test via Postman/curl before UI exists
+
+2. **Then Phase 3** (UI layer)
+   - Build interfaces to exercise the core logic
+   - Create user-facing workflow
+
+3. **Finally Phase 4** (Polish)
+   - Refine UX and handle edge cases
+   - Accessibility and responsiveness
+
 ## Testing Strategy
 
 - Unit tests for matching algorithms
