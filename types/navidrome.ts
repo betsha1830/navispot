@@ -73,3 +73,26 @@ export interface SearchResponse {
     song: NavidromeSong[];
   };
 }
+
+export interface SearchResult3 {
+  artist?: Array<{
+    id: string;
+    name: string;
+    albumCount?: number;
+    coverArt?: string;
+    userRating?: number;
+    artistImageUrl?: string;
+  }>;
+  album?: Array<{
+    id: string;
+    name: string;
+    artist?: string;
+    year?: number;
+    coverArt?: string;
+    duration?: number;
+    playCount?: number;
+    songCount?: number;
+    artistId?: string;
+  }>;
+  song: NavidromeSong[];
+}

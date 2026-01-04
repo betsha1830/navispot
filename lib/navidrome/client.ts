@@ -1,7 +1,7 @@
 import {
   NavidromePlaylist,
   NavidromeSong,
-  SubsonicResponse,
+  SearchResult3,
 } from '../../types/navidrome';
 
 export function generateAuthHeader(username: string, password: string): string {
@@ -112,6 +112,43 @@ export class NavidromeApiClient {
     return { success: response.status === 'ok' };
   }
 
+  async search(query: string, options?: {
+    songCount?: number;
+    artistCount?: number;
+    albumCount?: number;
+    songOffset?: number;
+    artistOffset?: number;
+    albumOffset?: number;
+  }): Promise<NavidromeSong[]> {
+    const params: Record<string, string | string[]> = { query };
+
+    if (options?.songCount !== undefined) {
+      params.songCount = String(options.songCount);
+    }
+    if (options?.artistCount !== undefined) {
+      params.artistCount = String(options.artistCount);
+    }
+    if (options?.albumCount !== undefined) {
+      params.albumCount = String(options.albumCount);
+    }
+    if (options?.songOffset !== undefined) {
+      params.songOffset = String(options.songOffset);
+    }
+    if (options?.artistOffset !== undefined) {
+      params.artistOffset = String(options.artistOffset);
+    }
+    if (options?.albumOffset !== undefined) {
+      params.albumOffset = String(options.albumOffset);
+    }
+
+    const url = this._buildUrl('/rest/search3', params);
+    const response = await this._makeRequest<{
+      searchResult3: SearchResult3;
+    }>(url);
+
+    return response.searchResult3?.song || [];
+  }
+
   private _buildUrl(
     endpoint: string,
     params: Record<string, string | string[] | undefined>
@@ -146,28 +183,6 @@ export class NavidromeApiClient {
     }
 
     return response.json();
-  }
-
-  private _handleResponse<T>(response: SubsonicResponse<T>): T {
-    if (response.status === 'failed' && response.error) {
-      const errorMessages: Record<number, string> = {
-        0: 'A generic error occurred',
-        10: 'Required parameter is missing',
-        20: 'Incompatible Subsonic protocol version',
-        30: 'Incompatible authentication mechanism',
-        40: 'Invalid username or password',
-        50: 'User is not authorized for the requested operation',
-        60: 'The requested data was not found',
-      };
-
-      const message =
-        errorMessages[response.error.code] ||
-        `Subsonic error ${response.error.code}: ${response.error.message}`;
-
-      throw new Error(message);
-    }
-
-    return response as unknown as T;
   }
 
   private _mapPlaylist(item: NavidromePlaylist): NavidromePlaylist {
