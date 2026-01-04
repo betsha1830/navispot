@@ -1,0 +1,28 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3883:3000"
+    environment:
+      - NODE_ENV=production
+    env_file:
+      - .env.local
+    restart: unless-stopped
+
+  # Optional: Navidrome instance for testing
+  # Uncomment to use a local Navidrome server
+  # navidrome:
+  #   image: deluan/navidrome:latest
+  #   ports:
+  #     - "4533:4533"
+  #   environment:
+  #     - ND_MULTIUSER=true
+  #     - ND_INITIAL_USER=admin
+  #     - ND_INITIAL_USER_PASSWORD=admin
+  #     - ND音乐库路径=/music
+  #   volumes:
+  #     - ./music:/music
+  #     - ./data:/data
+  #   restart: unless-stopped
