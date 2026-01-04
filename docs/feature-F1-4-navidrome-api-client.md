@@ -325,32 +325,25 @@ The code passes all ESLint checks with the project's configuration. This include
 
 The Navidrome API Client feature is fully implemented and verified. All sub-tasks have been completed, the code passes static analysis checks, and the implementation is ready for use by dependent features.
 
-## Bug Fixes and Updates
+## ISRC Response Handling
 
-### ISRC Response Parsing Fix (January 4, 2026)
+The Navidrome API client handles ISRC search responses correctly:
 
-Fixed two issues with the ISRC search functionality:
+**Subsonic Response Wrapper**: The Subsonic API wraps responses in a `subsonic-response` object. The search methods access the nested data correctly:
 
-1. **Subsonic Responsesonic API wraps Wrapper**: The Sub search responses in a `subsonic-response` object, but the `search` and `searchByISRC` methods were not correctly unwrapping this. Fixed by updating the response type and access pattern:
+```typescript
+const response = await this._makeRequest<{ 'subsonic-response': { searchResult3: SearchResult3 }>(url);
+return response['subsonic-response']?.searchResult3?.song || [];
+```
 
-   ```typescript
-   // Before (broken)
-   const response = await this._makeRequest<{ searchResult3: SearchResult3 }>(url);
-   return response.searchResult3?.song || [];
+**ISRC Array Format**: Navidrome returns ISRC as an array (`string[]`). The matching logic uses `.includes()` for robust comparison:
 
-   // After (fixed)
-   const response = await this._makeRequest<{ 'subsonic-response': { searchResult3: SearchResult3 }>(url);
-   return response['subsonic-response']?.searchResult3?.song || [];
-   ```
+```typescript
+// types/navidrome.ts
+isrc?: string[];
 
-2. **ISRC Array Type**: Navidrome returns the ISRC field as an array (`["USXXYYXXXXXX"]`) rather than a single string. Updated the `NavidromeSong.isrc` type and the matching logic:
+// lib/navidrome/client.ts
+const match = songs.find((song) => song.isrc?.includes(isrc));
+```
 
-   ```typescript
-   // types/navidrome.ts
-   isrc?: string[];  // Changed from string to string[]
-
-   // lib/navidrome/client.ts
-   const match = songs.find((song) => song.isrc?.includes(isrc));  // Changed from === to .includes()
-   ```
-
-These fixes ensure that ISRC-based track matching works correctly with Navidrome's actual API response format.
+This ensures ISRC-based track matching works with Navidrome's actual API response format.
