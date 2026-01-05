@@ -1,6 +1,8 @@
 import { SpotifyTrack } from '@/types/spotify';
 import { TrackMatch } from '@/types/matching';
 import { NavidromeApiClient } from '@/lib/navidrome/client';
+import { NavidromeNativeSong } from '@/types/navidrome';
+import { convertNativeSongToNavidromeSong } from './orchestrator';
 
 export function normalizeString(str: string): string {
   return str
@@ -8,6 +10,18 @@ export function normalizeString(str: string): string {
     .replace(/[^a-z0-9\s]/g, '')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+export function filterStrictMatches(
+  songs: NavidromeNativeSong[],
+  normalizedArtist: string,
+  normalizedTitle: string
+): NavidromeNativeSong[] {
+  return songs.filter((song) => {
+    const songArtist = normalizeString(song.artist);
+    const songTitle = normalizeString(song.title);
+    return songArtist === normalizedArtist && songTitle === normalizedTitle;
+  });
 }
 
 export async function matchByStrict(
@@ -29,23 +43,23 @@ export async function matchByStrict(
   }
 
   try {
-    const searchQuery = `${normalizedArtist} ${normalizedTitle}`;
-    const songs = await client.search(searchQuery, { songCount: 20 });
+    const artist = await client.getArtistByName(
+      spotifyTrack.artists.map((a) => a.name).join(' ')
+    );
 
-    const match = songs.find((song) => {
-      const songArtist = normalizeString(song.artist);
-      const songTitle = normalizeString(song.title);
-      return songArtist === normalizedArtist && songTitle === normalizedTitle;
-    });
+    if (artist) {
+      const songs = await client.getAllSongsByArtist(artist.id);
+      const matches = filterStrictMatches(songs, normalizedArtist, normalizedTitle);
 
-    if (match) {
-      return {
-        spotifyTrack,
-        navidromeSong: match,
-        matchStrategy: 'strict',
-        matchScore: 1,
-        status: 'matched',
-      };
+      if (matches.length > 0) {
+        return {
+          spotifyTrack,
+          navidromeSong: convertNativeSongToNavidromeSong(matches[0]),
+          matchStrategy: 'strict',
+          matchScore: 1,
+          status: 'matched',
+        };
+      }
     }
 
     return {

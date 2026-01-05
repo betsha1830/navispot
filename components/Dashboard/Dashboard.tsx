@@ -93,7 +93,9 @@ export function Dashboard() {
       const navidromeClient = new NavidromeApiClient(
         navidrome.credentials.url,
         navidrome.credentials.username,
-        navidrome.credentials.password
+        navidrome.credentials.password,
+        navidrome.token ?? undefined,
+        navidrome.clientId ?? undefined
       );
 
       const batchMatcher = createBatchMatcher(spotifyClient, navidromeClient);

@@ -12,6 +12,8 @@ export interface NavidromeAuthState {
   credentials: NavidromeCredentials | null;
   serverVersion: string | null;
   error: string | null;
+  token: string | null;
+  clientId: string | null;
 }
 
 export interface AuthContextType {

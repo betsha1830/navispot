@@ -18,7 +18,7 @@ export interface BatchMatcherOptions {
   enableFuzzy?: boolean;
   enableStrict?: boolean;
   fuzzyThreshold?: number;
-  maxFuzzyCandidates?: number;
+  maxSearchResults?: number;
   concurrency?: number;
 }
 
@@ -99,7 +99,7 @@ export class DefaultBatchMatcher implements BatchMatcher {
       enableFuzzy: options.enableFuzzy ?? defaultMatchingOptions.enableFuzzy,
       enableStrict: options.enableStrict ?? defaultMatchingOptions.enableStrict,
       fuzzyThreshold: options.fuzzyThreshold ?? defaultMatchingOptions.fuzzyThreshold,
-      maxFuzzyCandidates: options.maxFuzzyCandidates ?? defaultMatchingOptions.maxFuzzyCandidates,
+      maxSearchResults: options.maxSearchResults ?? defaultMatchingOptions.maxSearchResults,
     };
 
     const matches: TrackMatch[] = [];

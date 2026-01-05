@@ -1,12 +1,3 @@
-export interface NavidromeSong {
-  id: string;
-  title: string;
-  artist: string;
-  album: string;
-  duration: number;
-  isrc?: string[];
-}
-
 export interface NavidromePlaylist {
   id: string;
   name: string;
@@ -28,71 +19,112 @@ export interface NavidromeApiConfig {
   authHeader: string;
 }
 
-export interface SubsonicResponse {
-  status: string;
-  version: string;
-  type: string;
-  serverVersion: string;
-  error?: {
-    code: number;
-    message: string;
-  };
-}
-
-export interface PlaylistItem {
-  name: string;
+export interface NavidromeNativeSong {
   id: string;
-  owner: string;
-  public: boolean;
-  songCount: number;
+  title: string;
+  artist: string;
+  album: string;
+  artistId: string;
+  albumId: string;
   duration: number;
-  created: string;
-  changed: string;
+  isrc?: string;
+  year?: number;
+  path?: string;
+  trackNumber?: number;
+  discNumber?: number;
+  size?: number;
+  suffix?: string;
+  bitRate?: number;
+  contentType?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  albumArtist?: string;
+  albumArtistId?: string;
+  genres?: string[];
   comment?: string;
+  lyrics?: string;
+  playCount?: number;
+  playDate?: string;
+  lastPlayedAt?: string;
+  rating?: number;
+  mediaType?: string;
 }
 
-export interface PlaylistsResponse {
-  playlists: {
-    playlistList: PlaylistItem[];
-  };
-}
-
-export interface CreatePlaylistRequest {
+export interface NavidromeNativeArtist {
+  id: string;
   name: string;
-  songIds: string[];
-}
-
-export interface UpdatePlaylistRequest {
-  playlistId: string;
-  songIdsToAdd: string[];
-  songIdsToRemove?: number[];
-}
-
-export interface SearchResponse {
-  searchResult3: {
-    song: NavidromeSong[];
-  };
-}
-
-export interface SearchResult3 {
-  artist?: Array<{
-    id: string;
-    name: string;
-    albumCount?: number;
-    coverArt?: string;
-    userRating?: number;
-    artistImageUrl?: string;
-  }>;
-  album?: Array<{
+  albumCount?: number;
+  songCount?: number;
+  fullText?: string;
+  sortText?: string;
+  coverArt?: string;
+  albumGenre?: string;
+  albums?: Array<{
     id: string;
     name: string;
     artist?: string;
     year?: number;
     coverArt?: string;
-    duration?: number;
-    playCount?: number;
-    songCount?: number;
-    artistId?: string;
   }>;
-  song: NavidromeSong[];
+  songGenres?: Array<{
+    id: string;
+    name: string;
+    songCount: number;
+  }>;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface NavidromeNativeAlbum {
+  id: string;
+  name: string;
+  artist: string;
+  artistId: string;
+  year?: number;
+  songCount?: number;
+  duration?: number;
+  coverArt?: string;
+  genres?: string[];
+  comment?: string;
+  albumArtist?: string;
+  albumArtistId?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  compilation?: boolean;
+  maxYear?: number;
+  mediaType?: string;
+}
+
+export interface SearchOptions {
+  query?: string;
+  artistId?: string;
+  title?: string;
+  albumId?: string;
+  _start?: number;
+  _end?: number;
+  _sort?: string;
+  _order?: 'ASC' | 'DESC';
+}
+
+export interface NavidromeSearchResponse {
+  total: number;
+  start: number;
+  end: number;
+  items: NavidromeNativeSong[];
+}
+
+export interface ArtistInfo {
+  id: string;
+  name: string;
+  songCount: number;
+  albumCount: number;
+}
+
+export interface NavidromeSong {
+  id: string;
+  title: string;
+  artist: string;
+  album: string;
+  duration: number;
+  isrc?: string[];
 }

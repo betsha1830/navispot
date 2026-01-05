@@ -25,9 +25,23 @@ Spotify authentication tokens are persisted with the following behavior:
 
 Navidrome credentials are securely stored with the following features:
 - Credentials are stored in localStorage under the key `navispot_navidrome_auth`
-- The credentials object contains URL, username, and password
-- On initialization, the context attempts to reconnect using stored credentials
+- The credentials object contains URL, username, password, token, and clientId
+- On initialization, the context loads stored credentials and attempts to reconnect
+- The token and clientId are required for the native Navidrome API authentication
 - Credentials can be cleared through the provided method for logout functionality
+
+**localStorage Structure:**
+```json
+{
+  "url": "https://navidrome.example.com",
+  "username": "admin",
+  "password": "securepassword",
+  "token": "eyJhbGciOiJIUzI1NiIs...",
+  "clientId": "8dd4svE3aTcpFM1iJJupf0"
+}
+```
+
+**Note:** The Navidrome native API requires both `token` (JWT) and `clientId` for authentication. These are obtained from the `/auth/login` endpoint response, where `clientId` is returned in the `id` field.
 
 ### Provide Auth Status and Methods to Components
 
@@ -165,8 +179,12 @@ interface NavidromeAuthState {
   credentials: NavidromeCredentials | null;
   serverVersion: string | null;
   error: string | null;
+  token: string | null;
+  clientId: string | null;
 }
 ```
+
+**Note:** The `token` and `clientId` fields store the authentication credentials for the Navidrome native API. These are used by the `NavidromeApiClient` to authenticate requests without requiring re-login on every API call. The `clientId` is extracted from the `id` field of the `/auth/login` response.
 
 ## Integration with App
 
@@ -244,4 +262,41 @@ The auth context properly integrates with:
 
 **Last Verified:** January 4, 2026
 
+**Last Updated:** January 5, 2026
+
 The Auth Context feature is fully implemented and verified. All sub-tasks have been completed, the code passes static analysis checks, and the implementation is ready for use by dependent features.
+
+## Update Notes
+
+### January 5, 2026 - Native API Authentication
+
+**Changes Made:**
+
+1. **Added Native API Token Storage**
+   - Added `token` and `clientId` fields to `NavidromeAuthState` interface
+   - Token and clientId are now persisted to localStorage under `navispot_navidrome_auth`
+   - This eliminates the need for re-login on every API request
+
+2. **Updated `setNavidromeCredentials` Method**
+   - Now performs direct login using `NavidromeApiClient.login()`
+   - Saves both token and clientId to localStorage after successful authentication
+   - Updates auth state with token and clientId for immediate use
+
+3. **Updated `testNavidromeConnection` Method**
+   - Reads stored token and clientId from localStorage before attempting connection
+   - Passes stored credentials to `NavidromeApiClient` constructor
+   - Saves new token/clientId if authentication was needed
+
+4. **Fixed Client ID Extraction**
+   - Navidrome API returns client ID in the `id` field of the login response
+   - Updated `NavidromeApiClient.login()` to extract `clientId` from `data.id`
+   - Previously incorrectly expected `clientUniqueId` field
+
+**Benefits:**
+- Reduced authentication overhead by reusing stored tokens
+- Prevents 429 "Too Many Requests" errors from excessive re-logins
+- Faster API request handling with pre-authenticated client
+
+**Migration Note:**
+- Users must re-login after this update to generate new localStorage entry with `clientId`
+- Old localStorage entries without `clientId` will trigger automatic re-login

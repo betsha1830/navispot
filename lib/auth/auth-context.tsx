@@ -19,6 +19,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     credentials: null,
     serverVersion: null,
     error: null,
+    token: null,
+    clientId: null,
   });
   const [isLoading, setIsLoading] = useState(true);
 
@@ -29,35 +31,64 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         isConnected: false,
         serverVersion: null,
         error: 'No credentials set',
+        token: null,
+        clientId: null,
       }));
       return false;
     }
 
     try {
+      const storedAuth = localStorage.getItem(NAVIDROME_STORAGE_KEY);
+      let storedToken = '';
+      let storedClientId = '';
+      
+      if (storedAuth) {
+        const parsed = JSON.parse(storedAuth);
+        storedToken = parsed.token ?? '';
+        storedClientId = parsed.clientId ?? '';
+      }
+
       const client = new NavidromeApiClient(
         credentials.url,
         credentials.username,
-        credentials.password
+        credentials.password,
+        storedToken || undefined,
+        storedClientId || undefined
       );
-      const result = await client.ping();
-
-      if (result.success) {
+      
+      await client.ping();
+      const token = client.getToken();
+      const clientId = client.getClientId();
+      
+      if (token && clientId) {
+        localStorage.setItem(NAVIDROME_STORAGE_KEY, JSON.stringify({
+          url: credentials.url,
+          username: credentials.username,
+          password: credentials.password,
+          token,
+          clientId,
+        }));
+        
         setNavidrome((prev) => ({
           ...prev,
           isConnected: true,
-          serverVersion: result.serverVersion || null,
+          serverVersion: 'Navidrome (native API)',
           error: null,
+          token,
+          clientId,
         }));
         return true;
-      } else {
-        setNavidrome((prev) => ({
-          ...prev,
-          isConnected: false,
-          serverVersion: null,
-          error: result.error || 'Connection failed',
-        }));
-        return false;
       }
+
+      setNavidrome((prev) => ({
+        ...prev,
+        isConnected: false,
+        serverVersion: null,
+        error: 'Failed to authenticate',
+        token: null,
+        clientId: null,
+      }));
+      return false;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Connection test failed';
       setNavidrome((prev) => ({
@@ -65,6 +96,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         isConnected: false,
         serverVersion: null,
         error: errorMessage,
+        token: null,
+        clientId: null,
       }));
       return false;
     }
@@ -88,12 +121,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       const storedNavidrome = localStorage.getItem(NAVIDROME_STORAGE_KEY);
       if (storedNavidrome) {
-        const parsed = JSON.parse(storedNavidrome) as NavidromeCredentials;
+        const parsed = JSON.parse(storedNavidrome);
         setNavidrome((prev) => ({
           ...prev,
-          credentials: parsed,
+          credentials: { url: parsed.url, username: parsed.username, password: parsed.password },
+          token: parsed.token ?? null,
+          clientId: parsed.clientId ?? '',
         }));
-        await testNavidromeConnection(parsed);
+        await testNavidromeConnection({ url: parsed.url, username: parsed.username, password: parsed.password });
       }
 
       if (!storedSpotify) {
@@ -199,19 +234,58 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setNavidrome((prev) => ({ ...prev, error: null, credentials }));
 
     try {
-      localStorage.setItem(NAVIDROME_STORAGE_KEY, JSON.stringify(credentials));
+      const client = new NavidromeApiClient(
+        credentials.url,
+        credentials.username,
+        credentials.password
+      );
+      
+      const loginResult = await client.login(credentials.username, credentials.password);
+      
+      if (!loginResult.success) {
+        setNavidrome((prev) => ({
+          ...prev,
+          isConnected: false,
+          error: loginResult.error || 'Login failed',
+          token: null,
+          clientId: null,
+        }));
+        return false;
+      }
 
-      const success = await testNavidromeConnection(credentials);
-      return success;
+      const token = client.getToken();
+      const clientId = client.getClientId();
+      
+      localStorage.setItem(NAVIDROME_STORAGE_KEY, JSON.stringify({
+        url: credentials.url,
+        username: credentials.username,
+        password: credentials.password,
+        token,
+        clientId,
+      }));
+
+      setNavidrome((prev) => ({
+        ...prev,
+        isConnected: true,
+        serverVersion: 'Navidrome (native API)',
+        error: null,
+        token,
+        clientId,
+      }));
+
+      return true;
     } catch (error) {
       console.error('Error setting Navidrome credentials:', error);
       setNavidrome((prev) => ({
         ...prev,
+        isConnected: false,
         error: 'Failed to save credentials',
+        token: null,
+        clientId: null,
       }));
       return false;
     }
-  }, [testNavidromeConnection]);
+  }, []);
 
   const clearNavidromeCredentials = useCallback(() => {
     localStorage.removeItem(NAVIDROME_STORAGE_KEY);
@@ -220,6 +294,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       credentials: null,
       serverVersion: null,
       error: null,
+      token: null,
+      clientId: null,
     });
   }, []);
 

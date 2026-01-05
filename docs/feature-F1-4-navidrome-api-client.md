@@ -323,7 +323,70 @@ The code passes all ESLint checks with the project's configuration. This include
 
 **Last Verified:** January 4, 2026
 
+**Last Updated:** January 5, 2026
+
 The Navidrome API Client feature is fully implemented and verified. All sub-tasks have been completed, the code passes static analysis checks, and the implementation is ready for use by dependent features.
+
+## Update Notes
+
+### January 5, 2026 - Native API Migration
+
+**Major Changes:**
+
+1. **Migrated from Subsonic API to Native Navidrome API**
+   - All methods now use Navidrome's native REST API (`/api/*` endpoints) instead of Subsonic wrappers (`/rest/*`)
+   - Native API provides better pagination support and access to all song data
+   - See [Feature F1.5 Search Functionality](feature-F1-5-search.md) for details
+
+2. **Added Token-Based Authentication**
+   - Constructor now accepts optional `ndToken` and `ndClientId` parameters for native API authentication
+   - Added `login()` method to authenticate and obtain JWT token and client ID
+   - Added `getToken()` and `getClientId()` getter methods
+   - Added `_ensureAuthenticated()` private method to auto-authenticate before API calls
+
+3. **Native API Authentication Headers**
+   - All native API requests include required headers:
+     - `x-nd-authorization`: `Bearer ${token}`
+     - `x-nd-client-unique-id`: `${clientId}`
+
+4. **Fixed Client ID Extraction**
+   - Navidrome's `/auth/login` endpoint returns the client ID in the `id` field of the response
+   - Updated `login()` method to extract `clientId` from `data.id`
+   - Previous implementation incorrectly expected `clientUniqueId` field
+
+**Updated Constructor:**
+```typescript
+constructor(
+  url: string, 
+  username: string, 
+  password: string, 
+  ndToken?: string,           // NEW: Optional JWT token
+  ndClientId?: string         // NEW: Optional client ID
+)
+```
+
+**New Methods:**
+```typescript
+async login(username: string, password: string): Promise<{
+  success: boolean;
+  token?: string;
+  clientId?: string;
+  isAdmin?: boolean;
+  error?: string;
+}>
+
+getToken(): string
+getClientId(): string
+```
+
+**Benefits:**
+- Eliminates re-login on every API request by caching tokens
+- Uses native API for comprehensive song search (100+ songs per artist)
+- Prevents 429 "Too Many Requests" errors from excessive authentication attempts
+
+**Migration Note:**
+- Existing localStorage entries without `clientId` will trigger automatic re-login
+- Users must re-login after this update to generate proper authentication tokens
 
 ## ISRC Response Handling
 
