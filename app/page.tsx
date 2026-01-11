@@ -1,9 +1,35 @@
 'use client';
 
+import { useEffect } from 'react';
 import { useAuth } from '@/lib/auth/auth-context';
 import { Dashboard } from '@/components/Dashboard';
 import { SpotifyConnectButton } from '@/components/spotify-connect-button';
 import { NavidromeCredentialsForm } from '@/components/navidrome-credentials-form';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
+
+function GlobalErrorHandler() {
+  useEffect(() => {
+    const handleError = (event: ErrorEvent) => {
+      console.error('Global error caught:', event.error);
+      event.preventDefault();
+    };
+
+    const handleUnhandledRejection = (event: PromiseRejectionEvent) => {
+      console.error('Unhandled promise rejection:', event.reason);
+      event.preventDefault();
+    };
+
+    window.addEventListener('error', handleError);
+    window.addEventListener('unhandledrejection', handleUnhandledRejection);
+
+    return () => {
+      window.removeEventListener('error', handleError);
+      window.removeEventListener('unhandledrejection', handleUnhandledRejection);
+    };
+  }, []);
+
+  return null;
+}
 
 export default function Home() {
   const { isLoading, spotify, navidrome } = useAuth();
@@ -24,8 +50,25 @@ export default function Home() {
   if (isAuthenticated) {
     return (
       <div className="min-h-screen bg-zinc-50 px-4 py-8 dark:bg-black sm:px-6 lg:px-8">
+        <GlobalErrorHandler />
         <main className="mx-auto max-w-6xl">
-          <Dashboard />
+          <ErrorBoundary
+            fallback={
+              <div className="flex min-h-screen items-center justify-center">
+                <div className="text-center">
+                  <p className="text-red-500 mb-4">Something went wrong with the Dashboard</p>
+                  <button
+                    onClick={() => window.location.reload()}
+                    className="px-4 py-2 bg-blue-500 text-white rounded-lg"
+                  >
+                    Reload Page
+                  </button>
+                </div>
+              </div>
+            }
+          >
+            <Dashboard />
+          </ErrorBoundary>
         </main>
       </div>
     );

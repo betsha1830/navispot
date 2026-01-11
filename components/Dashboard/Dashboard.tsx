@@ -1,11 +1,17 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useAuth } from '@/lib/auth/auth-context';
 import { spotifyClient } from '@/lib/spotify/client';
-import { NavidromeApiClient } from '@/lib/navidrome/client';
+import { NavidromeApiClient, parseExportMetadata } from '@/lib/navidrome/client';
 import { SpotifyPlaylist, SpotifyTrack } from '@/types/spotify';
-import { PlaylistCard } from './PlaylistCard';
+import { NavidromePlaylist } from '@/types/navidrome';
+import { PlaylistTable } from '@/components/Dashboard/PlaylistTable';
+import { ExportLayoutManager } from '@/components/Dashboard/ExportLayoutManager';
+import { ConfirmationPopup } from '@/components/Dashboard/ConfirmationPopup';
+import { SelectedPlaylistsPanel, SelectedPlaylist } from '@/components/Dashboard/SelectedPlaylistsPanel';
+import { StatisticsPanel, Statistics } from '@/components/Dashboard/StatisticsPanel';
+import { UnmatchedSongsPanel, UnmatchedSong } from '@/components/Dashboard/UnmatchedSongsPanel';
 import { ProgressTracker, ProgressState } from '@/components/ProgressTracker';
 import { ResultsReport, ExportResult } from '@/components/ResultsReport';
 import { createBatchMatcher, BatchMatcherOptions } from '@/lib/matching/batch-matcher';
@@ -13,6 +19,10 @@ import { getMatchStatistics } from '@/lib/matching/orchestrator';
 import { createPlaylistExporter, PlaylistExporterOptions } from '@/lib/export/playlist-exporter';
 import { createFavoritesExporter } from '@/lib/export/favorites-exporter';
 import { FavoritesExportResult } from '@/types/favorites';
+import { PlaylistTableItem, PlaylistInfo } from '@/types/playlist-table';
+import { TrackMatch } from '@/types/matching';
+
+const LIKED_SONGS_ID = 'liked-songs';
 
 interface PlaylistItem {
   id: string;
@@ -26,7 +36,7 @@ interface PlaylistItem {
 }
 
 const LIKED_SONGS_ITEM: PlaylistItem = {
-  id: 'liked-songs',
+  id: LIKED_SONGS_ID,
   name: 'Liked Songs',
   description: 'Your liked tracks from Spotify',
   images: [{ url: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%23E91E63"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>' }],
@@ -35,15 +45,34 @@ const LIKED_SONGS_ITEM: PlaylistItem = {
   isLikedSongs: true,
 };
 
+function formatDuration(ms: number): string {
+  const minutes = Math.floor(ms / 60000);
+  const seconds = Math.floor((ms % 60000) / 1000);
+  return `${minutes}:${String(seconds).padStart(2, '0')}`;
+}
+
 export function Dashboard() {
   const { spotify, navidrome } = useAuth();
   const [playlists, setPlaylists] = useState<SpotifyPlaylist[]>([]);
+  const [tableItems, setTableItems] = useState<PlaylistTableItem[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [progressState, setProgressState] = useState<ProgressState | null>(null);
   const [exportResult, setExportResult] = useState<ExportResult | null>(null);
   const [likedSongsCount, setLikedSongsCount] = useState<number>(0);
+  const [navidromePlaylists, setNavidromePlaylists] = useState<NavidromePlaylist[]>([]);
+
+  const [isExporting, setIsExporting] = useState(false);
+  const [showConfirmation, setShowConfirmation] = useState(false);
+  const [currentUnmatchedPlaylistId, setCurrentUnmatchedPlaylistId] = useState<string | null>(null);
+  const [unmatchedSongs, setUnmatchedSongs] = useState<UnmatchedSong[]>([]);
+  const [selectedPlaylistsStats, setSelectedPlaylistsStats] = useState<SelectedPlaylist[]>([]);
+  const [sortColumn, setSortColumn] = useState<'name' | 'tracks' | 'owner'>('name');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const isExportingRef = useRef(false);
 
   useEffect(() => {
     async function fetchData() {
@@ -66,6 +95,22 @@ export function Dashboard() {
         } catch {
           setLikedSongsCount(0);
         }
+
+        if (navidrome.isConnected && navidrome.credentials && navidrome.token && navidrome.clientId) {
+          const navidromeClient = new NavidromeApiClient(
+            navidrome.credentials.url,
+            navidrome.credentials.username,
+            navidrome.credentials.password,
+            navidrome.token,
+            navidrome.clientId
+          );
+          try {
+            const navPlaylists = await navidromeClient.getPlaylists();
+            setNavidromePlaylists(navPlaylists);
+          } catch (navErr) {
+            console.warn('Failed to fetch Navidrome playlists:', navErr);
+          }
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to fetch playlists');
       } finally {
@@ -74,9 +119,116 @@ export function Dashboard() {
     }
 
     fetchData();
-  }, [spotify.isAuthenticated, spotify.token]);
+  }, [spotify.isAuthenticated, spotify.token, navidrome.isConnected, navidrome.credentials, navidrome.token, navidrome.clientId]);
 
-  const handleToggle = (playlistId: string) => {
+  useEffect(() => {
+    const items: PlaylistTableItem[] = playlists.map((playlist) => {
+      let exportStatus: 'none' | 'exported' | 'out-of-sync' = 'none';
+      let navidromePlaylistId: string | undefined;
+      let lastExportedAt: string | undefined;
+
+      if (navidromePlaylists.length > 0) {
+        const navPlaylist = navidromePlaylists.find((np) => {
+          const metadata = parseExportMetadata(np.comment);
+          return metadata?.spotifyPlaylistId === playlist.id;
+        });
+
+        if (navPlaylist) {
+          const metadata = parseExportMetadata(navPlaylist.comment);
+          if (metadata) {
+            navidromePlaylistId = metadata.navidromePlaylistId;
+            lastExportedAt = metadata.exportedAt;
+
+            if (playlist.snapshot_id && metadata.spotifySnapshotId === playlist.snapshot_id) {
+              exportStatus = 'exported';
+            } else {
+              exportStatus = 'out-of-sync';
+            }
+          }
+        }
+      }
+
+      return {
+        id: playlist.id,
+        name: playlist.name,
+        images: playlist.images,
+        owner: { display_name: playlist.owner.display_name },
+        tracks: playlist.tracks,
+        snapshot_id: playlist.snapshot_id || '',
+        isLikedSongs: false,
+        selected: selectedIds.has(playlist.id),
+        exportStatus,
+        navidromePlaylistId,
+        lastExportedAt,
+      };
+    });
+
+    setTableItems(items);
+  }, [playlists, navidromePlaylists, selectedIds]);
+
+  useEffect(() => {
+    if (isExportingRef.current) {
+      return;
+    }
+    const likedSongsItem: PlaylistTableItem = {
+      id: LIKED_SONGS_ID,
+      name: 'Liked Songs',
+      images: [{ url: '' }],
+      owner: { display_name: 'You' },
+      tracks: { total: likedSongsCount },
+      snapshot_id: '',
+      isLikedSongs: true,
+      selected: selectedIds.has(LIKED_SONGS_ID),
+      exportStatus: 'none',
+    };
+
+    setTableItems((prev) => {
+      const withoutLiked = prev.filter((item) => !item.isLikedSongs);
+      return [likedSongsItem, ...withoutLiked];
+    });
+  }, [likedSongsCount, selectedIds]);
+
+  const filteredItems = useMemo(() => {
+    let result = [...tableItems];
+
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      result = result.filter(
+        (item) =>
+          item.name.toLowerCase().includes(query) ||
+          item.owner.display_name.toLowerCase().includes(query)
+      );
+    }
+
+    result.sort((a, b) => {
+      let comparison = 0;
+      switch (sortColumn) {
+        case 'name':
+          comparison = a.name.localeCompare(b.name);
+          break;
+        case 'tracks':
+          comparison = a.tracks.total - b.tracks.total;
+          break;
+        case 'owner':
+          comparison = a.owner.display_name.localeCompare(b.owner.display_name);
+          break;
+      }
+      return sortDirection === 'asc' ? comparison : -comparison;
+    });
+
+    return result;
+  }, [tableItems, searchQuery, sortColumn, sortDirection]);
+
+  const handleSort = (column: 'name' | 'tracks' | 'owner') => {
+    if (sortColumn === column) {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortColumn(column);
+      setSortDirection('asc');
+    }
+  };
+
+  const handleToggleSelection = (playlistId: string) => {
     setSelectedIds((prev) => {
       const newSet = new Set(prev);
       if (newSet.has(playlistId)) {
@@ -86,6 +238,14 @@ export function Dashboard() {
       }
       return newSet;
     });
+  };
+
+  const handleToggleSelectAll = () => {
+    if (selectedIds.size === filteredItems.length && filteredItems.length > 0) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(filteredItems.map((item) => item.id)));
+    }
   };
 
   const createInitialProgressState = (total: number): ProgressState => ({
@@ -104,14 +264,14 @@ export function Dashboard() {
     statistics: { ...state.statistics, ...(updates.statistics || {}) },
   }), []);
 
-  const handleExport = async () => {
+  const handleStartExport = async () => {
     if (!spotify.isAuthenticated || !spotify.token || !navidrome.credentials) {
       setError('Please connect both Spotify and Navidrome to export playlists.');
       return;
     }
 
-    const hasLikedSongs = selectedIds.has('liked-songs');
-    const selectedPlaylists = playlists.filter(p => selectedIds.has(p.id));
+    const hasLikedSongs = selectedIds.has(LIKED_SONGS_ID);
+    const selectedPlaylists = playlists.filter((p) => selectedIds.has(p.id));
     const itemsToExport: (PlaylistItem | SpotifyPlaylist)[] = [];
 
     if (hasLikedSongs) {
@@ -123,9 +283,27 @@ export function Dashboard() {
       return;
     }
 
-    setLoading(true);
+    isExportingRef.current = true;
+    setIsExporting(true);
+    setShowConfirmation(false);
     setError(null);
     setExportResult(null);
+
+    setSelectedPlaylistsStats(
+      itemsToExport.map((item) => ({
+        id: item.id,
+        name: item.name,
+        matched: 0,
+        unmatched: 0,
+        exported: 0,
+        failed: 0,
+        total: item.tracks.total,
+        status: 'pending' as const,
+        progress: 0,
+      }))
+    );
+    setCurrentUnmatchedPlaylistId(null);
+    setUnmatchedSongs([]);
 
     try {
       spotifyClient.setToken(spotify.token);
@@ -148,7 +326,13 @@ export function Dashboard() {
         fuzzyThreshold: 0.8,
       };
 
-      for (const item of itemsToExport) {
+      let totalMatched = 0;
+      let totalUnmatched = 0;
+      let totalExported = 0;
+      let totalFailed = 0;
+
+      for (let i = 0; i < itemsToExport.length; i++) {
+        const item = itemsToExport[i];
         let progress = createInitialProgressState(0);
         setProgressState(progress);
 
@@ -157,10 +341,10 @@ export function Dashboard() {
 
         if ('isLikedSongs' in item && item.isLikedSongs) {
           const savedTracks = await spotifyClient.getAllSavedTracks();
-          tracks = savedTracks.map(t => t.track);
+          tracks = savedTracks.map((t) => t.track);
           isLikedSongs = true;
         } else {
-          tracks = (await spotifyClient.getAllPlaylistTracks(item.id)).map(t => t.track);
+          tracks = (await spotifyClient.getAllPlaylistTracks(item.id)).map((t) => t.track);
         }
 
         progress = updateProgress(progress, {
@@ -174,12 +358,14 @@ export function Dashboard() {
           async (batchProgress) => {
             progress = updateProgress(progress, {
               phase: 'matching',
-              currentTrack: batchProgress.currentTrack ? {
-                name: batchProgress.currentTrack.name,
-                artist: batchProgress.currentTrack.artists?.map(a => a.name).join(', ') || 'Unknown',
-                index: batchProgress.current - 1,
-                total: batchProgress.total,
-              } : undefined,
+              currentTrack: batchProgress.currentTrack
+                ? {
+                    name: batchProgress.currentTrack.name,
+                    artist: batchProgress.currentTrack.artists?.map((a) => a.name).join(', ') || 'Unknown',
+                    index: batchProgress.current - 1,
+                    total: batchProgress.total,
+                  }
+                : undefined,
               progress: {
                 current: batchProgress.current,
                 total: batchProgress.total,
@@ -192,11 +378,33 @@ export function Dashboard() {
 
         const statistics = getMatchStatistics(matches);
 
+        setSelectedPlaylistsStats((prev) =>
+          prev.map((stat, idx) =>
+            idx === i
+              ? { ...stat, status: 'exporting', matched: statistics.matched, unmatched: statistics.unmatched }
+              : stat
+          )
+        );
+
+        const unmatchedSongsList: UnmatchedSong[] = matches
+          .filter((m: TrackMatch) => m.status === 'unmatched')
+          .map((m: TrackMatch) => ({
+            title: m.spotifyTrack.name,
+            album: m.spotifyTrack.album?.name || 'Unknown',
+            artist: m.spotifyTrack.artists?.map((a) => a.name).join(', ') || 'Unknown',
+            duration: formatDuration(m.spotifyTrack.duration_ms),
+          }));
+
+        setCurrentUnmatchedPlaylistId(item.id);
+        setUnmatchedSongs(unmatchedSongsList);
+
         progress = updateProgress(progress, {
           phase: 'exporting',
           progress: { current: 0, total: matches.length, percent: 0 },
         });
         setProgressState(progress);
+
+        let exportResultData: { statistics: { total: number; starred: number; skipped: number; failed: number } };
 
         if (isLikedSongs) {
           const result = await favoritesExporter.exportFavorites(matches, {
@@ -217,34 +425,27 @@ export function Dashboard() {
                 },
               });
               setProgressState({ ...progress });
+              setSelectedPlaylistsStats((prev) =>
+                prev.map((stat, idx) =>
+                  idx === i ? { ...stat, progress: exportProgress.percent, exported: exportProgress.current } : stat
+                )
+              );
             },
           });
 
-          setProgressState({
-            phase: 'completed',
-            progress: { current: matches.length, total: matches.length, percent: 100 },
-            statistics: {
-              matched: result.statistics.starred,
-              unmatched: result.statistics.skipped,
-              exported: result.statistics.starred,
-              failed: result.statistics.failed,
-            },
-          });
-
-          setExportResult({
-            playlistName: item.name,
-            timestamp: new Date(),
+          exportResultData = {
             statistics: {
               total: result.statistics.total,
-              matched: statistics.matched,
-              unmatched: result.statistics.skipped,
-              ambiguous: statistics.ambiguous,
-              exported: result.statistics.starred,
+              starred: result.statistics.starred,
+              skipped: result.statistics.skipped,
               failed: result.statistics.failed,
             },
-            matches: matches,
-            options: { mode: 'create', skipUnmatched: false },
-          });
+          };
+
+          totalMatched += statistics.matched;
+          totalUnmatched += statistics.unmatched + statistics.ambiguous;
+          totalExported += result.statistics.starred;
+          totalFailed += result.statistics.failed;
         } else {
           const exporterOptions: PlaylistExporterOptions = {
             mode: 'create',
@@ -265,19 +466,56 @@ export function Dashboard() {
                 },
               });
               setProgressState({ ...progress });
+              setSelectedPlaylistsStats((prev) =>
+                prev.map((stat, idx) =>
+                  idx === i
+                    ? { ...stat, progress: exportProgress.percent, exported: exportProgress.current }
+                    : stat
+                )
+              );
             },
           };
 
           const result = await playlistExporter.exportPlaylist(item.name, matches, exporterOptions);
 
+          exportResultData = {
+            statistics: {
+              total: result.statistics.total,
+              starred: result.statistics.exported,
+              skipped: result.statistics.skipped,
+              failed: result.statistics.failed,
+            },
+          };
+
+          totalMatched += statistics.matched;
+          totalUnmatched += result.statistics.skipped;
+          totalExported += result.statistics.exported;
+          totalFailed += result.statistics.failed;
+        }
+
+        setSelectedPlaylistsStats((prev) =>
+          prev.map((stat, idx) =>
+            idx === i
+              ? {
+                  ...stat,
+                  status: 'exported',
+                  progress: 100,
+                  exported: exportResultData.statistics.starred,
+                  failed: exportResultData.statistics.failed,
+                }
+              : stat
+          )
+        );
+
+        if (i === itemsToExport.length - 1) {
           setProgressState({
             phase: 'completed',
-            progress: { current: result.statistics.total, total: result.statistics.total, percent: 100 },
+            progress: { current: totalMatched + totalUnmatched, total: totalMatched + totalUnmatched, percent: 100 },
             statistics: {
-              matched: result.statistics.exported,
-              unmatched: result.statistics.skipped,
-              exported: result.statistics.exported,
-              failed: result.statistics.failed,
+              matched: totalMatched,
+              unmatched: totalUnmatched,
+              exported: totalExported,
+              failed: totalFailed,
             },
           });
 
@@ -285,12 +523,12 @@ export function Dashboard() {
             playlistName: item.name,
             timestamp: new Date(),
             statistics: {
-              total: result.statistics.total,
-              matched: statistics.matched,
-              unmatched: result.statistics.skipped,
-              ambiguous: statistics.ambiguous,
-              exported: result.statistics.exported,
-              failed: result.statistics.failed,
+              total: totalMatched + totalUnmatched,
+              matched: totalMatched,
+              unmatched: totalUnmatched,
+              ambiguous: 0,
+              exported: totalExported,
+              failed: totalFailed,
             },
             matches: matches,
             options: { mode: 'create', skipUnmatched: false },
@@ -307,13 +545,19 @@ export function Dashboard() {
         error: errorMessage,
       });
     } finally {
-      setLoading(false);
+      isExportingRef.current = false;
+      setIsExporting(false);
     }
   };
 
   const handleCancelExport = () => {
+    isExportingRef.current = false;
+    setIsExporting(false);
     setProgressState(null);
     setExportResult(null);
+    setSelectedPlaylistsStats([]);
+    setCurrentUnmatchedPlaylistId(null);
+    setUnmatchedSongs([]);
   };
 
   const handleCompleteExport = () => {
@@ -323,13 +567,104 @@ export function Dashboard() {
   const handleExportAgain = () => {
     setProgressState(null);
     setExportResult(null);
-    handleExport();
+    handleStartExport();
   };
 
   const handleBackToDashboard = () => {
     setProgressState(null);
     setExportResult(null);
+    handleCancelExport();
   };
+
+  const handlePlaylistClick = (id: string) => {
+    const stats = selectedPlaylistsStats.find((s) => s.id === id);
+    if (stats) {
+      setCurrentUnmatchedPlaylistId(id);
+    }
+  };
+
+  const confirmationPlaylists: PlaylistInfo[] = useMemo(() => {
+    const result: PlaylistInfo[] = [];
+
+    if (selectedIds.has(LIKED_SONGS_ID)) {
+      result.push({ name: 'Liked Songs', trackCount: likedSongsCount });
+    }
+
+    playlists
+      .filter((p) => selectedIds.has(p.id))
+      .forEach((p) => {
+        result.push({ name: p.name, trackCount: p.tracks.total });
+      });
+
+    return result;
+  }, [selectedIds, likedSongsCount, playlists]);
+
+  const fixedExportButton = (
+    <div className="fixed bottom-6 right-6 z-50">
+      <button
+        onClick={isExporting ? handleCancelExport : () => setShowConfirmation(true)}
+        disabled={!isExporting && selectedIds.size === 0}
+        className={`rounded-lg px-6 py-3 text-sm font-medium shadow-lg transition-all hover:shadow-xl disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:shadow-lg ${
+          isExporting
+            ? 'bg-red-500 hover:bg-red-600 text-white'
+            : 'bg-blue-500 hover:bg-blue-600 text-white'
+        }`}
+      >
+        {isExporting ? 'Cancel Export' : `Export Selected (${selectedIds.size})`}
+      </button>
+    </div>
+  );
+
+  const selectedPlaylistsSection = (
+    <SelectedPlaylistsPanel
+      selectedPlaylists={selectedPlaylistsStats}
+      onPlaylistClick={handlePlaylistClick}
+      currentPlaylistId={currentUnmatchedPlaylistId}
+      isExporting={isExporting}
+    />
+  );
+
+  const statisticsSection = (
+    <StatisticsPanel
+      statistics={{
+        matched: selectedPlaylistsStats.reduce((sum, s) => sum + s.matched, 0),
+        unmatched: selectedPlaylistsStats.reduce((sum, s) => sum + s.unmatched, 0),
+        exported: selectedPlaylistsStats.reduce((sum, s) => sum + s.exported, 0),
+        failed: selectedPlaylistsStats.reduce((sum, s) => sum + s.failed, 0),
+      }}
+    />
+  );
+
+  const unmatchedSongsSection = (
+    <UnmatchedSongsPanel
+      unmatchedSongs={unmatchedSongs}
+      isEmpty={currentUnmatchedPlaylistId === null}
+    />
+  );
+
+  const mainTableSection = (
+    <PlaylistTable
+      items={filteredItems}
+      likedSongsCount={likedSongsCount}
+      selectedIds={selectedIds}
+      onToggleSelection={handleToggleSelection}
+      onToggleSelectAll={handleToggleSelectAll}
+      sortColumn={sortColumn}
+      sortDirection={sortDirection}
+      onSort={handleSort}
+      searchQuery={searchQuery}
+      onSearchChange={setSearchQuery}
+      isExporting={isExporting}
+    />
+  );
+
+  const resultsReportSection = exportResult && progressState?.phase === 'completed' && (
+    <ResultsReport
+      result={exportResult}
+      onExportAgain={handleExportAgain}
+      onBackToDashboard={handleBackToDashboard}
+    />
+  );
 
   if (!spotify.isAuthenticated) {
     return (
@@ -339,7 +674,7 @@ export function Dashboard() {
     );
   }
 
-  if (progressState) {
+  if (progressState && progressState.phase !== 'completed') {
     return (
       <div className="py-8">
         <div className="mb-6">
@@ -358,15 +693,6 @@ export function Dashboard() {
           onCancel={handleCancelExport}
           onComplete={handleCompleteExport}
         />
-        {exportResult && progressState.phase === 'completed' && (
-          <div className="mt-6">
-            <ResultsReport
-              result={exportResult}
-              onExportAgain={handleExportAgain}
-              onBackToDashboard={handleBackToDashboard}
-            />
-          </div>
-        )}
       </div>
     );
   }
@@ -397,33 +723,22 @@ export function Dashboard() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
-        <button
-          onClick={handleExport}
-          disabled={selectedIds.size === 0 || loading}
-          className="rounded-lg bg-blue-500 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          Export Selected ({selectedIds.size})
-        </button>
-      </div>
+      <ConfirmationPopup
+        isOpen={showConfirmation}
+        onClose={() => setShowConfirmation(false)}
+        onConfirm={handleStartExport}
+        playlists={confirmationPlaylists}
+      />
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <PlaylistCard
-          key={LIKED_SONGS_ITEM.id}
-          playlist={{ ...LIKED_SONGS_ITEM, tracks: { total: likedSongsCount } } as SpotifyPlaylist}
-          isSelected={selectedIds.has(LIKED_SONGS_ITEM.id)}
-          onToggle={() => handleToggle(LIKED_SONGS_ITEM.id)}
-        />
-        {playlists.map((playlist) => (
-          <PlaylistCard
-            key={playlist.id}
-            playlist={playlist}
-            isSelected={selectedIds.has(playlist.id)}
-            onToggle={() => handleToggle(playlist.id)}
-          />
-        ))}
-      </div>
+      <ExportLayoutManager
+        isExporting={isExporting}
+        selectedPlaylistsSection={selectedPlaylistsSection}
+        statisticsSection={statisticsSection}
+        unmatchedSongsSection={unmatchedSongsSection}
+        mainTableSection={mainTableSection}
+        fixedExportButton={fixedExportButton}
+        resultsReportSection={resultsReportSection}
+      />
     </div>
   );
 }

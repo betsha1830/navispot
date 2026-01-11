@@ -1,2 +1,12 @@
 export { Dashboard } from './Dashboard';
-export { PlaylistCard } from './PlaylistCard';
+export { PlaylistTable } from './PlaylistTable';
+export { TableFilters, FilterChips } from './TableFilters';
+export { TableSearch } from './TableSearch';
+export { ConfirmationPopup } from './ConfirmationPopup';
+export { ExportLayoutManager } from './ExportLayoutManager';
+export { TableHeader } from './TableHeader';
+export { TableRow } from './TableRow';
+export { LovedSongsRow } from './LovedSongsRow';
+export { SelectedPlaylistsPanel } from './SelectedPlaylistsPanel';
+export { StatisticsPanel } from './StatisticsPanel';
+export { UnmatchedSongsPanel } from './UnmatchedSongsPanel';

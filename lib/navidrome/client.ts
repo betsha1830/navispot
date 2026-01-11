@@ -7,6 +7,14 @@ import {
 } from '../../types/navidrome';
 import { stripTitleSuffix } from '@/lib/matching/fuzzy';
 
+export interface ExportMetadata {
+  spotifyPlaylistId: string;
+  navidromePlaylistId?: string;
+  spotifySnapshotId: string;
+  exportedAt: string;
+  trackCount: number;
+}
+
 export function generateAuthHeader(username: string, password: string): string {
   const credentials = `${username}:${password}`;
   const encoded = Buffer.from(credentials).toString('base64');
@@ -22,6 +30,29 @@ export function normalizeSearchQuery(query: string): string {
     .replace(/[^a-z0-9\s]/g, ' ')  // Replace special chars with spaces
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+export function parseExportMetadata(comment: string | undefined): ExportMetadata | null {
+  if (!comment || comment.trim() === '') {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(comment);
+    if (
+      typeof parsed === 'object' &&
+      parsed !== null &&
+      'spotifyPlaylistId' in parsed &&
+      'spotifySnapshotId' in parsed &&
+      'exportedAt' in parsed &&
+      'trackCount' in parsed
+    ) {
+      return parsed as ExportMetadata;
+    }
+    return null;
+  } catch {
+    return null;
+  }
 }
 
 export class NavidromeApiClient {
@@ -559,6 +590,80 @@ export class NavidromeApiClient {
     }
 
     return allStarredSongs;
+  }
+
+  async getPlaylistByComment(spotifyPlaylistId: string): Promise<NavidromePlaylist | null> {
+    try {
+      const playlists = await this.getPlaylists();
+
+      for (const playlist of playlists) {
+        const metadata = parseExportMetadata(playlist.comment);
+        if (metadata && metadata.spotifyPlaylistId === spotifyPlaylistId) {
+          return playlist;
+        }
+      }
+
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
+  async updatePlaylistComment(playlistId: string, metadata: ExportMetadata): Promise<void> {
+    await this._ensureAuthenticated();
+
+    const comment = JSON.stringify(metadata);
+    const url = `${this.baseUrl}/api/playlist/${playlistId}`;
+    const response = await fetch(url, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-nd-authorization': `Bearer ${this._ndToken}`,
+        'x-nd-client-unique-id': `${this._ndClientId}`,
+      },
+      body: JSON.stringify({ comment }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to update playlist comment: ${response.status} ${response.statusText}`);
+    }
+  }
+
+  async findOrCreateLikedSongsPlaylist(spotifyPlaylistId: string, trackCount: number): Promise<NavidromePlaylist> {
+    const existingPlaylist = await this.getPlaylistByComment(spotifyPlaylistId);
+
+    if (existingPlaylist) {
+      const metadata = parseExportMetadata(existingPlaylist.comment);
+      if (metadata && metadata.trackCount !== trackCount) {
+      }
+      return existingPlaylist;
+    }
+
+    const result = await this.createPlaylist('Liked Songs', []);
+
+    if (!result.success || !result.id) {
+      throw new Error('Failed to create Liked Songs playlist');
+    }
+
+    const metadata: ExportMetadata = {
+      spotifyPlaylistId,
+      navidromePlaylistId: result.id,
+      spotifySnapshotId: '',
+      exportedAt: new Date().toISOString(),
+      trackCount,
+    };
+
+    await this.updatePlaylistComment(result.id, metadata);
+
+    return {
+      id: result.id,
+      name: 'Liked Songs',
+      comment: JSON.stringify(metadata),
+      songCount: 0,
+      duration: 0,
+      createdAt: '',
+      updatedAt: '',
+    };
   }
 
   getToken(): string {
