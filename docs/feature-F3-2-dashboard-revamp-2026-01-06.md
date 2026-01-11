@@ -249,7 +249,124 @@ border-4 border-green-500 border-t-transparent
 
 ---
 
-## Implementation Plan
+## Export Tracking & Sync Mechanism
+
+### Overview
+
+Export status is tracked using Navidrome's `comment` field on playlists. This enables cross-device sync and change detection.
+
+### Comment Metadata Format
+
+When a playlist is exported, store JSON metadata in Navidrome's `comment` field:
+
+```json
+{
+  "spotifyPlaylistId": "abc123",
+  "navidromePlaylistId": "nav123",
+  "spotifySnapshotId": "xyz789",
+  "exportedAt": "2026-01-06T10:30:00Z",
+  "trackCount": 42
+}
+```
+
+### Export Status States
+
+| Status | Condition | Badge Style |
+|--------|-----------|-------------|
+| **Not Exported** | No matching Navidrome playlist found | Gray `bg-zinc-100 text-zinc-600` |
+| **Exported** | Navidrome playlist exists with matching `snapshotId` | Green `bg-green-100 text-green-700` |
+| **Out of Sync** | Navidrome exists but `snapshotId` differs | Orange `bg-orange-100 text-orange-700` |
+
+### Sync Detection
+
+1. **On Dashboard Load:**
+   - Fetch all Navidrome playlists
+   - Parse `comment` field for metadata
+   - Match with Spotify playlists by `spotifyPlaylistId`
+   - Compare current Spotify `snapshot_id` with stored `snapshotId`
+
+2. **Status Determination:**
+   - No match found → `not-exported`
+   - Match found + `snapshotId` matches → `exported`
+   - Match found + `snapshotId` differs → `out-of-sync`
+
+3. **Sync Actions:**
+   - `out-of-sync` playlists show warning icon
+   - Re-export updates existing Navidrome playlist (using `navidromePlaylistId`)
+   - New exports create new Navidrome playlists
+
+### Liked Songs Tracking
+
+Liked Songs sync uses a special approach:
+
+- **First Export:** Create Navidrome playlist named "Liked Songs" with metadata in comment
+- **Subsequent Exports:** Compare saved tracks count with stored `trackCount`
+- **Out of Sync:** Show status when count differs from stored value
+- **Fallback:** If no matching playlist found, treat as not exported
+
+### Data Model Updates
+
+#### PlaylistTableItem (Updated)
+
+```typescript
+interface PlaylistTableItem {
+  id: string;
+  name: string;
+  images: { url: string }[];
+  owner: { display_name: string };
+  tracks: { total: number };
+  snapshot_id: string;
+  isLikedSongs: boolean;
+  selected: boolean;
+  exportStatus: 'none' | 'exported' | 'out-of-sync';
+  navidromePlaylistId?: string;
+  lastExportedAt?: string;
+}
+```
+
+#### ExportMetadata
+
+```typescript
+interface ExportMetadata {
+  spotifyPlaylistId: string;
+  navidromePlaylistId?: string;
+  spotifySnapshotId: string;
+  exportedAt: string;
+  trackCount: number;
+}
+```
+
+### Navidrome Client Updates
+
+| Task | File | Description |
+|------|------|-------------|
+| Add `getPlaylistByComment` method | `lib/navidrome/client.ts` | Find playlists with matching Spotify ID |
+| Add `updatePlaylistComment` method | `lib/navidrome/client.ts` | Update comment with new metadata |
+| Add `findOrCreateLikedSongsPlaylist` method | `lib/navidrome/client.ts` | Special handling for Liked Songs |
+
+### UI Updates for Sync
+
+**Status Badge with Sync Indicator:**
+```tsx
+{exportStatus === 'out-of-sync' && (
+  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400">
+    <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+      <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+    </svg>
+    Out of Sync
+  </span>
+)}
+```
+
+### Testing Requirements (Updated)
+
+- [ ] Export creates Navidrome playlist with metadata in comment
+- [ ] Dashboard loads and matches Navidrome playlists with Spotify playlists
+- [ ] Export status shows correctly (none/exported/out-of-sync)
+- [ ] Out of sync badge appears when snapshot IDs differ
+- [ ] Re-export updates existing Navidrome playlist
+- [ ] Liked Songs tracking works correctly
+- [ ] Cross-device sync status loads correctly
 
 ### Phase 1: Core Table Structure
 
@@ -277,6 +394,8 @@ border-4 border-green-500 border-t-transparent
 | Implement selection | `Dashboard.tsx` | Multi-select with "Select All" (filtered playlists only) |
 | Update export flow | `Dashboard.tsx` | Connect selection to export |
 | Preserve selection state | `Dashboard.tsx` | Session persistence |
+| Implement export tracking | `lib/navidrome/client.ts` | Add methods to read/update comment metadata |
+| Implement sync detection | `Dashboard.tsx` | Match Navidrome playlists with Spotify playlists |
 
 ### Phase 4: Visual Polish
 
@@ -286,6 +405,7 @@ border-4 border-green-500 border-t-transparent
 | Sticky header | `PlaylistTable.tsx` | CSS position: sticky |
 | Loading states | `PlaylistTable.tsx` | Skeleton loaders |
 | Empty states | `PlaylistTable.tsx` | No results found |
+| Status badges | `TableRow.tsx` | Export status with out-of-sync indicator |
 
 ---
 
@@ -303,6 +423,7 @@ border-4 border-green-500 border-t-transparent
 | `components/Dashboard/TableSearch.tsx` | Search input component |
 | `hooks/usePlaylistTable.ts` | Custom hook for table state |
 | `types/playlist-table.ts` | Table-specific types |
+| `types/export.ts` | Export metadata types |
 
 ### Files to Modify
 
@@ -331,13 +452,28 @@ interface PlaylistTableItem {
   images: { url: string }[];
   owner: { display_name: string };
   tracks: { total: number };
+  snapshot_id: string;
   isLikedSongs: boolean;
   selected: boolean;
-  exportStatus: 'none' | 'pending' | 'exported';
+  exportStatus: 'none' | 'exported' | 'out-of-sync';
+  navidromePlaylistId?: string;
+  lastExportedAt?: string;
 }
 ```
 
 **Note:** The `Liked Songs` playlist is positioned as the first row in the playlist list (after the header row), displayed before other user playlists.
+
+### ExportMetadata
+
+```typescript
+interface ExportMetadata {
+  spotifyPlaylistId: string;
+  navidromePlaylistId?: string;
+  spotifySnapshotId: string;
+  exportedAt: string;
+  trackCount: number;
+}
+```
 
 ### TableState
 
@@ -415,8 +551,8 @@ The table inherits the login page visual language but adapts for data display:
 | Status | Badge Style |
 |--------|-------------|
 | None | `bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400` |
-| Pending | `bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400` |
 | Exported | `bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400` |
+| Out of Sync | `bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400` |
 
 ---
 
@@ -434,6 +570,12 @@ The table inherits the login page visual language but adapts for data display:
 - [ ] "Select All" selects only filtered/visible playlists
 - [ ] Export button is disabled when no selection
 - [ ] Status column is visible but not filterable
+- [ ] Export creates Navidrome playlist with metadata in comment
+- [ ] Dashboard loads and matches Navidrome playlists with Spotify playlists
+- [ ] Export status shows correctly (none/exported/out-of-sync)
+- [ ] Out of sync badge appears when snapshot IDs differ
+- [ ] Re-export updates existing Navidrome playlist
+- [ ] Liked Songs tracking works correctly
 - [ ] Progress view shows during export
 - [ ] Results view shows after export
 - [ ] Back to Dashboard returns to table
