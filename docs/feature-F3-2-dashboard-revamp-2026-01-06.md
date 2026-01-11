@@ -754,6 +754,7 @@ interface ExportMetadata {
 | Create Unmatched Songs Panel | `components/Dashboard/UnmatchedSongsPanel.tsx` | Right section showing unmatched details |
 | Update main table | `components/Dashboard/PlaylistTable.tsx` | Main table with expandable rows |
 | Create Export Layout Manager | `components/Dashboard/ExportLayoutManager.tsx` | Manages layout transitions (before/during/after) |
+| Create Confirmation Popup | `components/Dashboard/ConfirmationPopup.tsx` | Dialog for export confirmation before starting |
 
 ### Phase 4: Visual Polish
 
@@ -782,6 +783,7 @@ interface ExportMetadata {
 | `components/Dashboard/SelectedPlaylistsPanel.tsx` | Left-top section with selected playlists table |
 | `components/Dashboard/StatisticsPanel.tsx` | Left-bottom section with match/unmatch/export stats |
 | `components/Dashboard/UnmatchedSongsPanel.tsx` | Right section showing unmatched song details |
+| `components/Dashboard/ConfirmationPopup.tsx` | Dialog popup for export confirmation |
 | `components/Dashboard/ExportLayoutManager.tsx` | Manages layout transitions (before/during/after) |
 | `hooks/usePlaylistTable.ts` | Custom hook for table state |
 | `hooks/useExportProgress.ts` | Custom hook for export progress tracking |
