@@ -599,7 +599,7 @@ export function Dashboard() {
     return result;
   }, [selectedIds, likedSongsCount, playlists]);
 
-  const fixedExportButton = (
+  const fixedExportButton = !(progressState?.phase === 'completed') && (
     <div className="fixed bottom-6 right-6 z-50">
       <button
         onClick={isExporting ? handleCancelExport : () => setShowConfirmation(true)}
@@ -718,6 +718,7 @@ export function Dashboard() {
 
       <ExportLayoutManager
         isExporting={isExporting}
+        isCompleted={progressState?.phase === 'completed'}
         progressBar={progressBar}
         selectedPlaylistsSection={selectedPlaylistsSection}
         statisticsSection={statisticsSection}
