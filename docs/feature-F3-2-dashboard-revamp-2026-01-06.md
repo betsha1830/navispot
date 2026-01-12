@@ -143,9 +143,51 @@ When clicking "Export Selected", a confirmation dialog appears:
 - Disabled when no selection (before export)
 - Button remains active for cancellation during export
 
-### 1.3 Visual Design (Login Page Theme) ✅ Completed
+### 1.3 Visual Design (Login Page Theme) ✅ Updated
 
 The table inherits visual style elements from the login page but not its layout/sizing constraints.
+
+#### Statistics Display ✅ Updated (January 12, 2026)
+
+Statistics are now displayed as inline badges in the Selected Playlists panel header:
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│ Selected Playlists (3)           [150] [142✓] [8✗]                      │
+├─────────────────────────────────────────────────────────────────────────┤
+│ Name                    │ Status      │ Progress                        │
+├─────────────────────────────────────────────────────────────────────────┤
+```
+
+**Badge Styles:**
+| Badge | Icon | Color | Description |
+|-------|------|-------|-------------|
+| Total | ≡ | Gray `bg-zinc-100 text-zinc-700` | Total tracks across selected playlists |
+| Matched | ✓ | Green `bg-green-100 text-green-800` | Successfully matched tracks |
+| Unmatched | ✗ | Red `bg-red-100 text-red-800` | Unmatched tracks |
+
+```tsx
+<div className="flex items-center gap-3">
+  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">
+    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+    </svg>
+    {statistics.total}
+  </span>
+  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400">
+    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+    </svg>
+    {statistics.matched}
+  </span>
+  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400">
+    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+    </svg>
+    {statistics.unmatched}
+  </span>
+</div>
+```
 
 #### Color Scheme (from login page) ✅ Completed
 
@@ -281,7 +323,7 @@ border-4 border-green-500 border-t-transparent
 +----------------------------------------------------------------------+
 ```
 
-### 2.3 During Export Layout ✅ Completed
+### 2.3 During Export Layout ✅ Updated
 
 ```
 +----------------------------------------------------------------------+
@@ -289,32 +331,24 @@ border-4 border-green-500 border-t-transparent
 |  +----------------------------------------------------------------+ |
 |  | 1. Selected Playlists (Top-Left section)                       | |
 |  |  +----------------------------------------------------------+  | |
-|  |  | Playlist Name    | Status     | Progress | Match/Unmatch | | |
+|  |  | Playlist Name    | Status     | Progress                 | | |
 |  |  +----------------------------------------------------------+  | |
-|  |  | Liked Songs      | Exported   | [=====]  | 45 / 5        | | |
-|  |  | Playlist A       | Exporting  | [====-]  | 30 / 12       | | |
-|  |  | Playlist B       | Pending    | [-----]  | - / -         | | |
-|  |  +----------------------------------------------------------+  | |
-|  |                                                                | |
-|  |  2. Statistics (Bottom-Left section)                           | |
-|  |  +----------------------------------------------------------+  | |
-|  |  | Matched    | Unmatched   | Exported   | Failed           | | |
-|  |  |    45      |     5       |     40     |       0          | | |
+|  |  | Liked Songs      | Exported   | [=====]                  | | |
+|  |  | Playlist A       | Exporting  | [====-]                  | | |
+|  |  | Playlist B       | Pending    | [-----]                  | | |
 |  |  +----------------------------------------------------------+  | |
 |  |                                                                | |
-|  |  3. Unmatched Songs (Right section, below statistics)          | |
+|  |  2. Unmatched Songs (Right section, below Selected Playlists)  | |
 |  |  +----------------------------------------------------------+  | |
 |  |  | Title             | Album          | Artist      | Duration | | |
 |  |  +----------------------------------------------------------+  | |
 |  |  | Song Title A      | Album Name     | Artist Name | 3:45     | | |
 |  |  | Song Title B      | Album Name     | Artist Name | 4:20     | | |
-|  |  | +----------------------------------------------------------+  | |
-|  |  |                                                                | |
-|  |  +----------------------------------------------------------------+ |
-+----------------------------------------------------------------------+
+|  |  +----------------------------------------------------------+  | |
+|  +----------------------------------------------------------------+ |
 ```
 
-### 2.4 Selected Playlists Table Features ✅ Completed
+### 2.4 Selected Playlists Table Features ✅ Updated
 
 The Selected Playlists table in the left section supports:
 
@@ -325,7 +359,8 @@ The Selected Playlists table in the left section supports:
   - Export progress per playlist
 - **Status column:** Shows `Exported` / `Exporting` / `Pending`
 - **Progress bar:** Visual progress indicator during export
-- **Match counts:** Shows "45 / 5" format (matched / unmatched)
+- **Aggregate statistics:** Shown as inline badges in panel header (Total, Matched, Unmatched)
+- **Removed:** "Match/Unmatch" column from table (aggregate stats now in header)
 
 ### 2.5 Unmatched Songs Detail Panel ✅ Completed
 
@@ -344,26 +379,27 @@ The Selected Playlists table in the left section supports:
 - Empty state when no playlist selected
 - Click a song row for additional options (e.g., "Skip", "Match manually")
 
-### 2.6 Statistics Section ✅ Completed
+### 2.6 Statistics Section ✅ Removed (January 12, 2026)
 
-**Location:** Bottom-left of top half
+The separate Statistics Panel has been removed. Statistics are now displayed as inline badges in the Selected Playlists panel header (see Section 1.3 Visual Design).
 
-**Statistics Cards:**
-| Stat | Color | Description |
-|------|-------|-------------|
-| Matched | Green | Successfully matched tracks |
-| Unmatched | Yellow | No match found in Navidrome |
-| Exported | Blue | Successfully exported to Navidrome |
-| Failed | Red | Export failures |
+**Previous Implementation:**
+- Separate StatisticsPanel component with 4-card grid layout
+- Located at bottom-left of top section
+- Cards for: Matched, Unmatched, Exported, Failed
 
-**Layout:** 4-column grid or horizontal row depending on screen size
+**Current Implementation:**
+- Statistics integrated into Selected Playlists panel header
+- Three inline badges: Total, Matched (✓), Unmatched (✗)
+- More compact and reduces visual clutter
 
-### 2.7 During Export Behavior ✅ Completed
+### 2.7 During Export Behavior ✅ Updated
 
 - **Bottom table:** Hidden (frees up space for detailed export view)
 - **Left column sections:** Stack vertically
-  1. Selected Playlists table (with progress bars)
-  2. Statistics cards
+  1. Selected Playlists table (with progress bars and stats in header)
+  2. Unmatched Songs panel
+- **Statistics:** Now shown as inline badges in Selected Playlists header
 - **Right section:** Shows unmatched songs for currently exporting playlist
 - **Cancel button:** Visible at bottom of top section
 - **Updates in real-time:** Statistics and progress bars update as export progresses
@@ -715,364 +751,7 @@ interface ExportMetadata {
 )}
 ```
 
-### Testing Requirements ✅ Completed
-
-- [x] Export creates Navidrome playlist with metadata in comment
-- [x] Dashboard loads and matches Navidrome playlists with Spotify playlists
-- [x] Export status shows correctly (none/exported/out-of-sync)
-- [x] Out of sync badge appears when snapshot IDs differ
-- [x] Re-export updates existing Navidrome playlist
-- [x] Liked Songs tracking works correctly
-- [x] Cross-device sync status loads correctly
-
-### Phase 1: Core Table Structure ✅ Completed
-
-| Task | File | Description |
-|------|------|-------------|
-| Create `PlaylistTable` component | `components/Dashboard/PlaylistTable.tsx` | Main table with sticky header, Loved Songs row, sorting, search, and selection |
-| Create `TableHeader` component | `components/Dashboard/TableHeader.tsx` | Sortable column headers |
-| Create `TableRow` component | `components/Dashboard/TableRow.tsx` | Individual playlist row |
-| Create `LovedSongsRow` component | `components/Dashboard/LovedSongsRow.tsx` | Fixed second row for Liked Songs |
-| Update `Dashboard` component | `components/Dashboard/Dashboard.tsx` | Integrate table view |
-
-### Phase 1 Completed: PlaylistTable Component ✅ Completed
-
-Created: January 11, 2026
-
-**File:** `components/Dashboard/PlaylistTable.tsx`
-
-**Features Implemented:**
-
-| Feature | Status | Description |
-|---------|--------|-------------|
-| Sticky Header | ✅ | Semi-transparent backdrop with blur (`bg-white/95 dark:bg-zinc-900/95 backdrop-blur-sm`) |
-| Container Layout | ✅ | `max-h-[calc(100vh-250px)]` with inner scrollable content |
-| Column Structure | ✅ | Select (60px), Cover (80px), Name (Auto), Tracks (120px), Owner (200px), Status (120px) |
-| Sorting | ✅ | Click column headers to toggle ascending/descending on Name, Tracks, Owner columns |
-| Search | ✅ | Debounced search with clear button, searches playlist name and owner |
-| Selection | ✅ | Individual row checkboxes + "Select All" header checkbox |
-| Loved Songs Row | ✅ | Fixed second row with pink heart icon, scrolls with content |
-| Zebra Striping | ✅ | Even rows `bg-white dark:bg-zinc-900`, Odd rows `bg-zinc-50 dark:bg-zinc-800/50` |
-| Hover Effects | ✅ | `hover:bg-zinc-50 dark:hover:bg-zinc-800/50` |
-| Selected State | ✅ | `bg-zinc-100 dark:bg-zinc-800 border-l-4 border-l-green-500` |
-| Status Badges | ✅ | Export status with out-of-sync warning indicator |
-| Empty State | ✅ | Custom empty state with icon when no playlists match |
-| Export Mode | ✅ | Disables interactions when export is in progress |
-
-**Component Interface:** ✅ Completed
-
-```typescript
-interface PlaylistTableProps {
-  items: PlaylistTableItem[];
-  likedSongsCount: number;
-  selectedIds: Set<string>;
-  onToggleSelection: (id: string) => void;
-  onToggleSelectAll: () => void;
-  sortColumn: 'name' | 'tracks' | 'owner' | null;
-  sortDirection: 'asc' | 'desc' | null;
-  onSort: (column: 'name' | 'tracks' | 'owner') => void;
-  searchQuery: string;
-  onSearchChange: (query: string) => void;
-  isExporting?: boolean;
-}
-```
-
-**Visual Design (Login Page Theme):** ✅ Completed
-
-- **Page background:** `bg-zinc-50 dark:bg-black`
-- **Container:** `rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900`
-- **Header:** `sticky top-0 bg-white/95 dark:bg-zinc-900/95 backdrop-blur-sm z-10`
-- **Headings:** `text-zinc-900 dark:text-zinc-100`
-- **Body text:** `text-sm text-zinc-600 dark:text-zinc-400`
-- **Section borders:** `border-b border-zinc-200 dark:border-zinc-800`
-- **Status badge colors:**
-  - Exported: `bg-green-100 text-green-800 border-green-200`
-  - Out of Sync: `bg-yellow-100 text-yellow-800 border-yellow-200`
-  - Not Exported: `bg-gray-100 text-gray-800 border-gray-200`
-
-**Row Structure:** ✅ Completed
-
-1. **Header Row** - Sticky, sortable columns, select all checkbox
-2. **Loved Songs Row** - Pink heart icon, "You" as owner, first playlist row
-3. **Playlist Rows** - Regular playlists with zebra striping
-
-**Key Features:** ✅ Completed
-
-- **Search:** Real-time filtering with 300ms debounce (handled by parent)
-- **Sorting:** Ascending/descending toggle per column
-- **Selection:** Checkbox-based, persists in parent state
-- **Export Status:** Visual badges with sync detection
-- **Empty State:** Custom UI when no results match
-- **Responsive:** Full-width table with horizontal scroll if needed
-
-### Phase 2: Sorting, Filtering, Search ✅ Completed
-
-| Task | File | Description |
-|------|------|-------------|
-| Implement sort logic | `PlaylistTable.tsx` | State for sort column/direction |
-| Implement filter UI | `PlaylistTable.tsx` | Filter dropdowns and chips |
-| Implement search | `PlaylistTable.tsx` | Debounced search input |
-| Create hook for table state | `hooks/usePlaylistTable.ts` | Custom hook managing sorting, filtering, search, and selection state | Created |
-
-### Phase 3: Selection and Export Flow ✅ Completed
-
-| Task | File | Description | Status |
-|------|------|-------------|--------|
-| Implement selection | `Dashboard.tsx` | Multi-select with "Select All" (filtered playlists only) | ✅ Completed |
-| Update export flow | `Dashboard.tsx` | Connect selection to export, trigger layout changes | ✅ Completed |
-| Preserve selection state | `Dashboard.tsx` | Session persistence | ✅ Completed |
-| Implement export tracking | `lib/navidrome/client.ts` | Add methods to read/update comment metadata | ✅ Completed |
-| Implement sync detection | `Dashboard.tsx` | Match Navidrome playlists with Spotify playlists | ✅ Completed |
-| Create Selected Playlists Panel | `components/Dashboard/SelectedPlaylistsPanel.tsx` | Left-top section with selected playlists | ✅ Completed |
-| Create Statistics Panel | `components/Dashboard/StatisticsPanel.tsx` | Left-bottom section with match stats | ✅ Completed |
-| Create Unmatched Songs Panel | `components/Dashboard/UnmatchedSongsPanel.tsx` | Right section showing unmatched details | ✅ Completed |
-| Update main table | `components/Dashboard/PlaylistTable.tsx` | Main table with expandable rows | ✅ Completed |
-| Create Export Layout Manager | `components/Dashboard/ExportLayoutManager.tsx` | Manages layout transitions (before/during/after) | ✅ Completed |
-| Create Confirmation Popup | `components/Dashboard/ConfirmationPopup.tsx` | Dialog for export confirmation before starting | ✅ Completed |
-
-### Phase 4: Visual Polish ✅ Completed
-
-| Task | File | Description |
-|------|------|-------------|
-| Apply login page style | Global CSS | Consistent design language |
-| Sticky header | `PlaylistTable.tsx` | CSS position: sticky |
-| Loading states | `PlaylistTable.tsx` | Skeleton loaders |
-| Empty states | `PlaylistTable.tsx` | No results found |
-| Status badges | `TableRow.tsx` | Export status with out-of-sync indicator |
-
----
-
-## File Changes Summary
-
-### New Files Created ✅ Completed
-
-| File | Purpose | Status |
-|------|---------|--------|
-| `components/Dashboard/PlaylistTable.tsx` | Main table component with all features | ✅ Created |
-| `components/Dashboard/TableHeader.tsx` | Sortable header cells | ✅ Created (Jan 11, 2026) |
-| `components/Dashboard/TableRow.tsx` | Playlist row component with selection | ✅ Created (Jan 11, 2026) |
-| `components/Dashboard/LovedSongsRow.tsx` | Fixed second row for Liked Songs | ✅ Created (Jan 11, 2026) |
-| `components/Dashboard/TableFilters.tsx` | Filter controls with dropdown and chips | ✅ Created (Jan 11, 2026) |
-| `components/Dashboard/TableSearch.tsx` | Search input with debounce | ✅ Created (Jan 11, 2026) |
-| `components/Dashboard/SelectedPlaylistsPanel.tsx` | Left-top section with selected playlists table | ✅ Created |
-| `components/Dashboard/StatisticsPanel.tsx` | Left-bottom section with match/unmatch/export stats | ✅ Created |
-| `components/Dashboard/UnmatchedSongsPanel.tsx` | Right section showing unmatched song details | ✅ Created |
-| `components/Dashboard/ConfirmationPopup.tsx` | Dialog popup for export confirmation | ✅ Created (Jan 11, 2026) |
-| `components/Dashboard/ExportLayoutManager.tsx` | Manages layout transitions (before/during/after) | ✅ Created (Jan 11, 2026) |
-| `hooks/usePlaylistTable.ts` | Custom hook for table state | ✅ Created |
-| `hooks/useExportProgress.ts` | Custom hook for export progress tracking | ✅ Created |
-| `types/playlist-table.ts` | Table-specific types | ✅ Created (Jan 11, 2026) |
-| `types/export.ts` | Export metadata types | ✅ Already exists |
-
-### Files to Modify ✅ Completed
-
-| File | Changes |
-|------|---------|
-| `components/Dashboard/Dashboard.tsx` | Replace grid with table, update export flow |
-| `components/Dashboard/PlaylistCard.tsx` | Deprecated (replaced by table rows) |
-
-### Files to Remove (Optional)
-
-| File | Reason |
-|------|--------|
-| `components/Dashboard/PlaylistCard.tsx` | Replaced by table rows |
-
----
-
-## Data Model ✅ Completed
-
-### PlaylistTableItem ✅ Completed
-
-```typescript
-interface PlaylistTableItem {
-  id: string;
-  name: string;
-  images: { url: string }[];
-  owner: { display_name: string };
-  tracks: { total: number };
-  snapshot_id: string;
-  isLikedSongs: boolean;
-  selected: boolean;
-  exportStatus: 'none' | 'exported' | 'out-of-sync';
-  navidromePlaylistId?: string;
-  lastExportedAt?: string;
-}
-```
-
-**Note:** The `Liked Songs` playlist is positioned as the first row in the playlist list (after the header row), displayed before other user playlists.
-
-### ExportMetadata ✅ Completed
-
-```typescript
-interface ExportMetadata {
-  spotifyPlaylistId: string;
-  navidromePlaylistId?: string;
-  spotifySnapshotId: string;
-  exportedAt: string;
-  trackCount: number;
-}
-```
-
-### TableState ✅ Completed
-
-```typescript
-interface TableState {
-  sortColumn: 'name' | 'tracks' | 'owner';
-  sortDirection: 'asc' | 'desc';
-  searchQuery: string;
-  filters: {
-    status: 'all' | 'selected' | 'not-selected' | 'exported' | 'not-exported';
-    source: 'all' | 'liked-songs' | 'playlists';
-  };
-  selectedIds: Set<string>;
-}
-```
-
----
-
-## usePlaylistTable Hook ✅ Completed
-
-### Hook Overview ✅ Completed
-
-Custom React hook that manages all table state for the playlist table including sorting, filtering, search, and selection.
-
-**File:** `hooks/usePlaylistTable.ts`
-
-### Interface ✅ Completed
-
-```typescript
-interface UsePlaylistTableReturn {
-  items: PlaylistTableItem[];
-  state: {
-    sortColumn: 'name' | 'tracks' | 'owner';
-    sortDirection: 'asc' | 'desc';
-    searchQuery: string;
-    filters: {
-      status: 'all' | 'selected' | 'not-selected' | 'exported' | 'not-exported';
-      source: 'all' | 'liked-songs' | 'playlists';
-    };
-    selectedIds: string[];
-  };
-  handlers: {
-    setSort: (column: 'name' | 'tracks' | 'owner') => void;
-    setSearch: (query: string) => void;
-    setFilter: (filterType: 'status' | 'source', value: string) => void;
-    toggleSelection: (id: string) => void;
-    toggleSelectAll: () => void;
-  };
-}
-
-interface UsePlaylistTableProps {
-  initialItems: PlaylistTableItem[];
-  debounceMs?: number;
-}
-```
-
-### Features ✅ Completed
-
-| Feature | Description |
-|---------|-------------|
-| **Sorting** | Click column headers to toggle ascending/descending sort on name, tracks, and owner columns |
-| **Filtering** | Filter by status (all/selected/not-selected/exported/not-exported) and source (all/liked-songs/playlists) |
-| **Search** | Debounced search (300ms default) across playlist name and owner name |
-| **Selection** | Individual row selection and "Select All" for filtered playlists only |
-| **Persistence** | Selection state persists in sessionStorage during the session |
-
-### Usage Example ✅ Completed
-
-```tsx
-const {
-  items,
-  state: { sortColumn, sortDirection, searchQuery, filters, selectedIds },
-  handlers: { setSort, setSearch, setFilter, toggleSelection, toggleSelectAll },
-} = usePlaylistTable({
-  initialItems: playlists,
-  debounceMs: 300,
-});
-```
-
-### Sorting Behavior ✅ Completed
-
-- Clicking the same column toggles between ascending and descending
-- Clicking a different column switches to that column with ascending order
-- Sorting applies to the filtered and searched results
-
-### Selection Behavior ✅ Completed
-
-- Individual toggle adds/removes playlist from selection
-- "Select All" selects all playlists matching current filters and search
-- If all filtered items are selected, "Select All" deselects all
-- Selection persists in sessionStorage across page reloads
-
----
-
-## Design Reference: Login Page Theme ✅ Completed
-
-### Key Style Elements ✅ Completed
-
-**From login page (`app/page.tsx`):**
-
-```tsx
-// Page background
-<div className="min-h-screen bg-zinc-50 dark:bg-black">
-
-// Card container
-<div className="rounded-lg border border-zinc-200 bg-white shadow-sm 
-         dark:border-zinc-800 dark:bg-zinc-900">
-
-// Heading
-<h1 className="text-3xl font-bold tracking-tight text-zinc-900 dark:text-zinc-100">
-
-// Body text
-<p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
-
-// Section border
-<div className="border-b border-zinc-200 dark:border-zinc-800">
-
-// Loading spinner
-<div className="h-8 w-8 animate-spin rounded-full border-4 border-green-500 border-t-transparent" />
-```
-
-### Table-Specific Adaptations ✅ Completed
-
-The table inherits the login page visual language but adapts for data display:
-
-```tsx
-// Table wrapper (full width, not constrained like login card)
-<div className="w-full max-w-6xl mx-auto">
-
-// Sticky header with backdrop blur
-<thead className="sticky top-0 bg-white/95 dark:bg-zinc-900/95 backdrop-blur-sm z-10">
-
-// Zebra striping - odd rows darker for visual separation
-<tbody className="divide-y divide-zinc-200 dark:divide-zinc-800">
-  <tr className="bg-white dark:bg-zinc-900">   {/* Even row */}
-  <tr className="bg-zinc-50 dark:bg-zinc-800/50"> {/* Odd row */}
-
-// Row hover
-<tr className="hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors">
-
-// Selected row highlight
-<tr className="bg-zinc-100 dark:bg-zinc-800 border-l-4 border-l-green-500">
-```
-
----
-
-## Export Status Badge Styles ✅ Completed
-
-### Status Colors (Consistent with Login Page Theme) ✅ Completed
-
-| Status | Badge Style |
-|--------|-------------|
-| None | `bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400` |
-| Exported | `bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400` |
-| Out of Sync | `bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400` |
-
----
-
-## Testing Requirements ✅ Completed
-
-### Manual Testing Checklist ✅ Completed
+### Testing Requirements ✅ Updated (January 12, 2026)
 
 **Table & Basic Features:**
 - [x] Table renders with all playlists loaded at once
@@ -1104,9 +783,9 @@ The table inherits the login page visual language but adapts for data display:
 - [x] Liked Songs tracking works correctly
 
 **Before/After Export Layout:**
-- [x] Top half shows two-column layout (left: Selected Playlists + Statistics, right: Unmatched Songs)
-- [x] Selected Playlists table appears in left section
-- [x] Statistics cards visible in bottom-left
+- [x] Top half shows two-column layout (left: Selected Playlists, right: Unmatched Songs)
+- [x] Selected Playlists table appears in left section with inline stats in header
+- [x] Statistics badges visible in Selected Playlists panel header
 - [x] Unmatched Songs panel appears in right section
 - [x] Clicking playlist in left shows its unmatched songs in right
 - [x] Bottom half shows main playlist table
@@ -1114,9 +793,9 @@ The table inherits the login page visual language but adapts for data display:
 **During Export Layout:**
 - [x] Bottom table disappears when export starts
 - [x] Top section reorganizes to vertical layout
-- [x] Selected Playlists table shows at top (with progress bars)
-- [x] Statistics cards show below Selected Playlists
-- [x] Unmatched Songs panel shows below Statistics
+- [x] Selected Playlists table shows at top (with progress bars and stats in header)
+- [x] Statistics badges show in Selected Playlists panel header
+- [x] Unmatched Songs panel shows below Selected Playlists
 - [x] Progress bars update in real-time for each playlist
 - [x] Currently exporting playlist is highlighted
 - [x] Cancel export button works and returns to table
@@ -1128,6 +807,7 @@ The table inherits the login page visual language but adapts for data display:
 - [x] Dark mode renders correctly (login page style)
 - [x] Empty state shows when no playlists
 - [x] Loading spinner displays during data fetch
+- [x] Statistics badges update in real-time during export
 
 ### Automated Tests ✅ Completed
 
@@ -1462,8 +1142,8 @@ The Dashboard UI Revamp (Feature F3.2) has been fully implemented with the follo
 - ✅ **Fixed export button** with cookie banner style
 - ✅ **Confirmation popup** before export starts
 - ✅ **Export layout manager** for before/during/after states
-- ✅ **Selected playlists panel** with progress tracking
-- ✅ **Statistics panel** with match/unmatch/export counts
+- ✅ **Selected playlists panel** with progress tracking and inline statistics
+- ✅ **Statistics display** as inline badges in panel header (replaces StatisticsPanel)
 - ✅ **Unmatched songs panel** showing details for selected playlist
 - ✅ **Confirmation popup** for export confirmation
 - ✅ **Full dark mode support** matching login page theme
@@ -1501,8 +1181,7 @@ The implementation follows all requirements from the design specification and ma
 | TableSearch | `components/Dashboard/TableSearch.tsx` | ✅ Complete |
 | ExportLayoutManager | `components/Dashboard/ExportLayoutManager.tsx` | ✅ Complete |
 | ConfirmationPopup | `components/Dashboard/ConfirmationPopup.tsx` | ✅ Complete |
-| SelectedPlaylistsPanel | `components/Dashboard/SelectedPlaylistsPanel.tsx` | ✅ Complete |
-| StatisticsPanel | `components/Dashboard/StatisticsPanel.tsx` | ✅ Complete |
+| SelectedPlaylistsPanel | `components/Dashboard/SelectedPlaylistsPanel.tsx` | ✅ Updated (Jan 12, 2026) - Added inline statistics |
 | UnmatchedSongsPanel | `components/Dashboard/UnmatchedSongsPanel.tsx` | ✅ Complete |
 | Dashboard | `components/Dashboard/Dashboard.tsx` | ✅ Complete |
 | usePlaylistTable hook | `hooks/usePlaylistTable.ts` | ✅ Complete |
@@ -1557,7 +1236,7 @@ The implementation follows all requirements from the design specification and ma
 | Liked Songs tracking works correctly | ✅ PASS |
 | Top half shows two-column layout | ✅ PASS |
 | Selected Playlists table visible | ✅ PASS |
-| Statistics cards visible | ✅ PASS |
+| Statistics badges visible in header | ✅ PASS (Jan 12, 2026) |
 | Unmatched Songs panel visible | ✅ PASS |
 | Bottom table disappears during export | ✅ PASS |
 | Progress bars update in real-time | ✅ PASS |

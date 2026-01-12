@@ -8,5 +8,4 @@ export { TableHeader } from './TableHeader';
 export { TableRow } from './TableRow';
 export { LovedSongsRow } from './LovedSongsRow';
 export { SelectedPlaylistsPanel } from './SelectedPlaylistsPanel';
-export { StatisticsPanel } from './StatisticsPanel';
 export { UnmatchedSongsPanel } from './UnmatchedSongsPanel';

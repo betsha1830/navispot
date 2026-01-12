@@ -4,7 +4,6 @@ export interface ExportLayoutManagerProps {
   isExporting: boolean;
   progressBar?: ReactNode;
   selectedPlaylistsSection: ReactNode;
-  statisticsSection: ReactNode;
   unmatchedSongsSection: ReactNode;
   mainTableSection: ReactNode;
   fixedExportButton: ReactNode;
@@ -14,7 +13,6 @@ export function ExportLayoutManager({
   isExporting,
   progressBar,
   selectedPlaylistsSection,
-  statisticsSection,
   unmatchedSongsSection,
   mainTableSection,
   fixedExportButton,
@@ -36,9 +34,6 @@ export function ExportLayoutManager({
               <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 overflow-hidden">
                 {selectedPlaylistsSection}
               </div>
-              <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 overflow-hidden">
-                {statisticsSection}
-              </div>
               <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 overflow-hidden flex-1 min-h-[200px]">
                 {unmatchedSongsSection}
               </div>
@@ -48,9 +43,6 @@ export function ExportLayoutManager({
               <div className="w-1/2 flex flex-col border-r border-zinc-200 dark:border-zinc-800">
                 <div className="flex-1 overflow-hidden">
                   {selectedPlaylistsSection}
-                </div>
-                <div className="border-t border-zinc-200 dark:border-zinc-800">
-                  {statisticsSection}
                 </div>
               </div>
               <div className="w-1/2 overflow-hidden">

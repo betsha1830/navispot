@@ -10,7 +10,6 @@ import { PlaylistTable } from '@/components/Dashboard/PlaylistTable';
 import { ExportLayoutManager } from '@/components/Dashboard/ExportLayoutManager';
 import { ConfirmationPopup } from '@/components/Dashboard/ConfirmationPopup';
 import { SelectedPlaylistsPanel, SelectedPlaylist } from '@/components/Dashboard/SelectedPlaylistsPanel';
-import { StatisticsPanel } from '@/components/Dashboard/StatisticsPanel';
 import { UnmatchedSongsPanel, UnmatchedSong } from '@/components/Dashboard/UnmatchedSongsPanel';
 import { ProgressState } from '@/components/ProgressTracker';
 import { createBatchMatcher, BatchMatcherOptions } from '@/lib/matching/batch-matcher';
@@ -574,15 +573,10 @@ export function Dashboard() {
       onPlaylistClick={handlePlaylistClick}
       currentPlaylistId={currentUnmatchedPlaylistId}
       isExporting={isExporting}
-    />
-  );
-
-  const statisticsSection = (
-    <StatisticsPanel
       statistics={{
         matched: selectedPlaylistsStats.reduce((sum, s) => sum + s.matched, 0),
         unmatched: selectedPlaylistsStats.reduce((sum, s) => sum + s.unmatched, 0),
-        exported: selectedPlaylistsStats.reduce((sum, s) => sum + s.exported, 0),
+        total: selectedPlaylistsStats.reduce((sum, s) => sum + s.total, 0),
         failed: selectedPlaylistsStats.reduce((sum, s) => sum + s.failed, 0),
       }}
     />
@@ -682,7 +676,6 @@ export function Dashboard() {
         isExporting={isExporting}
         progressBar={progressBar}
         selectedPlaylistsSection={selectedPlaylistsSection}
-        statisticsSection={statisticsSection}
         unmatchedSongsSection={unmatchedSongsSection}
         mainTableSection={mainTableSection}
         fixedExportButton={fixedExportButton}
