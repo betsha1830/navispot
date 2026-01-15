@@ -113,7 +113,7 @@ const PlaylistRow = ({
           )}
         </div>
       </td>
-      <td className="px-4 py-3 min-w-0">
+      <td className="px-4 py-3 min-w-0 max-w-[300px]">
         <div className="flex items-center gap-2">
           {item.isLikedSongs && (
             <svg className="h-4 w-4 text-pink-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
@@ -185,19 +185,19 @@ const LovedSongsRow = ({
           </svg>
         </div>
       </td>
-      <td className="px-4 py-3 min-w-0">
+      <td className="px-4 py-3 min-w-0 max-w-[300px]">
         <div className="flex items-center gap-2">
           <svg className="h-4 w-4 text-pink-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
             <path fillRule="evenodd" d="M3.172 5.172a4 4 0 015.656 0L10 6.343l1.172-1.171a4 4 0 115.656 5.656L10 17.657l-6.828-6.829a4 4 0 010-5.656z" clipRule="evenodd" />
           </svg>
-          <span className="truncate font-medium text-zinc-900 dark:text-zinc-100">Liked Songs</span>
+          <span className="truncate font-medium text-zinc-900 dark:text-zinc-100" title="Liked Songs">Liked Songs</span>
         </div>
       </td>
       <td className="px-4 py-3 w-[120px] text-sm text-zinc-600 dark:text-zinc-400">
         {count.toLocaleString()} tracks
       </td>
       <td className="px-4 py-3 w-[200px]">
-        <span className="text-sm text-zinc-600 dark:text-zinc-400">You</span>
+        <span className="text-sm text-zinc-600 dark:text-zinc-400 truncate max-w-[200px]" title="You">You</span>
       </td>
       <td className="px-4 py-3 w-[120px]">
         <StatusBadge status="none" />

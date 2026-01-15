@@ -47,12 +47,12 @@ export function ExportLayoutManager({
             </div>
           ) : (
             <div className="flex h-full">
-              <div className="w-1/2 flex flex-col border-r border-zinc-200 dark:border-zinc-800">
+              <div className="w-1/2 flex flex-col pr-2 overflow-hidden">
                 <div className="flex-1 overflow-hidden">
                   {selectedPlaylistsSection}
                 </div>
               </div>
-              <div className="w-1/2 overflow-hidden">
+              <div className="w-1/2 pl-2 overflow-hidden">
                 {unmatchedSongsSection}
               </div>
             </div>
@@ -60,7 +60,7 @@ export function ExportLayoutManager({
         </div>
 
         {!isExporting && (
-          <div className="h-[50%] border-t border-zinc-200 dark:border-zinc-800 overflow-hidden">
+          <div className="h-[50%] overflow-hidden pt-4">
             {mainTableSection}
           </div>
         )}

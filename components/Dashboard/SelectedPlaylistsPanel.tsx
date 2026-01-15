@@ -62,8 +62,8 @@ export function SelectedPlaylistsPanel({
   };
 
   return (
-    <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 overflow-hidden">
-      <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-200 dark:border-zinc-800">
+    <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 overflow-hidden flex flex-col h-full">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-200 dark:border-zinc-800 flex-shrink-0">
         <h2 className="text-sm font-medium text-zinc-900 dark:text-zinc-100">
           Selected Playlists ({selectedPlaylists.length})
         </h2>
@@ -90,9 +90,9 @@ export function SelectedPlaylistsPanel({
           </div>
         )}
       </div>
-      <div className="overflow-x-auto">
+      <div className="overflow-auto flex-1">
         <table className="w-full">
-          <thead className="bg-zinc-50 dark:bg-zinc-800/50">
+          <thead className="bg-zinc-50 dark:bg-zinc-800/50 sticky top-0">
             <tr className="border-b border-zinc-200 dark:border-zinc-800">
               <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
                 Name
@@ -118,7 +118,7 @@ export function SelectedPlaylistsPanel({
                       : 'hover:bg-zinc-50 dark:hover:bg-zinc-800/50'}
                   `}
                 >
-                  <td className="px-4 py-3 text-sm font-medium text-zinc-900 dark:text-zinc-100 truncate max-w-[200px]">
+                  <td className="px-4 py-3 text-sm font-medium text-zinc-900 dark:text-zinc-100 truncate max-w-[200px]" title={playlist.name}>
                     {playlist.name}
                   </td>
                   <td className="px-4 py-3">

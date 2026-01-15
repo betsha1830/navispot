@@ -15,13 +15,13 @@ interface UnmatchedSongsPanelProps {
 export function UnmatchedSongsPanel({ unmatchedSongs, isEmpty }: UnmatchedSongsPanelProps) {
   if (isEmpty) {
     return (
-      <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 overflow-hidden">
-        <div className="px-4 py-3 border-b border-zinc-200 dark:border-zinc-800">
+      <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 overflow-hidden flex flex-col h-full">
+        <div className="px-4 py-3 border-b border-zinc-200 dark:border-zinc-800 flex-shrink-0">
           <h2 className="text-sm font-medium text-zinc-900 dark:text-zinc-100">
             Unmatched Songs
           </h2>
         </div>
-        <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
+        <div className="flex flex-col items-center justify-center py-12 px-4 text-center flex-1">
           <svg
             className="w-12 h-12 text-zinc-300 dark:text-zinc-600 mb-4"
             fill="none"
@@ -39,7 +39,7 @@ export function UnmatchedSongsPanel({ unmatchedSongs, isEmpty }: UnmatchedSongsP
             No Playlist Selected
           </h3>
           <p className="text-sm text-zinc-500 dark:text-zinc-400">
-            Select a playlist from the left panel to view unmatched songs.
+            Select a playlist from left panel to view unmatched songs.
           </p>
         </div>
       </div>
@@ -48,13 +48,13 @@ export function UnmatchedSongsPanel({ unmatchedSongs, isEmpty }: UnmatchedSongsP
 
   if (unmatchedSongs.length === 0) {
     return (
-      <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 overflow-hidden">
-        <div className="px-4 py-3 border-b border-zinc-200 dark:border-zinc-800">
+      <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 overflow-hidden flex flex-col h-full">
+        <div className="px-4 py-3 border-b border-zinc-200 dark:border-zinc-800 flex-shrink-0">
           <h2 className="text-sm font-medium text-zinc-900 dark:text-zinc-100">
             Unmatched Songs
           </h2>
         </div>
-        <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
+        <div className="flex flex-col items-center justify-center py-12 px-4 text-center flex-1">
           <svg
             className="w-12 h-12 text-green-300 dark:text-green-600 mb-4"
             fill="none"
@@ -80,15 +80,15 @@ export function UnmatchedSongsPanel({ unmatchedSongs, isEmpty }: UnmatchedSongsP
   }
 
   return (
-    <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 overflow-hidden">
-      <div className="px-4 py-3 border-b border-zinc-200 dark:border-zinc-800">
+    <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 overflow-hidden flex flex-col h-full">
+      <div className="px-4 py-3 border-b border-zinc-200 dark:border-zinc-800 flex-shrink-0">
         <h2 className="text-sm font-medium text-zinc-900 dark:text-zinc-100">
           Unmatched Songs ({unmatchedSongs.length})
         </h2>
       </div>
-      <div className="overflow-x-auto">
+      <div className="overflow-auto flex-1">
         <table className="w-full">
-          <thead className="bg-zinc-50 dark:bg-zinc-800/50">
+          <thead className="bg-zinc-50 dark:bg-zinc-800/50 sticky top-0">
             <tr className="border-b border-zinc-200 dark:border-zinc-800">
               <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400 w-[40%]">
                 Title
@@ -110,13 +110,13 @@ export function UnmatchedSongsPanel({ unmatchedSongs, isEmpty }: UnmatchedSongsP
                 key={index}
                 className="hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors"
               >
-                <td className="px-4 py-2 text-sm text-zinc-900 dark:text-zinc-100 truncate max-w-[200px]">
+                <td className="px-4 py-2 text-sm text-zinc-900 dark:text-zinc-100 truncate max-w-[200px]" title={song.title}>
                   {song.title}
                 </td>
-                <td className="px-4 py-2 text-sm text-zinc-600 dark:text-zinc-400 truncate max-w-[120px]">
+                <td className="px-4 py-2 text-sm text-zinc-600 dark:text-zinc-400 truncate max-w-[120px]" title={song.album}>
                   {song.album}
                 </td>
-                <td className="px-4 py-2 text-sm text-zinc-600 dark:text-zinc-400 truncate max-w-[120px]">
+                <td className="px-4 py-2 text-sm text-zinc-600 dark:text-zinc-400 truncate max-w-[120px]" title={song.artist}>
                   {song.artist}
                 </td>
                 <td className="px-4 py-2 text-sm text-zinc-500 dark:text-zinc-400">

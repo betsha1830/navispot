@@ -1,8 +1,9 @@
 # Feature F3.2 Dashboard UI Revamp Plan
 
 **Date:** January 6, 2026
-**Status:** ✅ Completed
+**Status:** ✅ Completed with UI Improvements
 **Implementation Date:** January 11, 2026
+**UI Improvements Date:** January 15, 2026
 **Previous Implementation:** Grid-based card layout (feature-F3-2-dashboard.md)
 
 ---
@@ -1126,6 +1127,62 @@ Updated on: January 11, 2026
    - Compare current Spotify snapshot_id with stored snapshotId in Navidrome comment
    - Show 'out-of-sync' status when they differ
    - Show warning icon for out-of-sync playlists
+
+---
+
+## UI Improvements (January 15, 2026) ✅ Completed
+
+### Visual Presentation Enhancements
+
+#### Scrollable Table Containers
+- **SelectedPlaylistsPanel**: Added `flex flex-col h-full` with `overflow-auto flex-1` for proper scrolling
+- **UnmatchedSongsPanel**: Added `flex flex-col h-full` with `overflow-auto flex-1` for proper scrolling
+- **Sticky Headers**: Both panels now have sticky table headers that remain visible during scroll
+- **Header Positioning**: Headers use `flex-shrink-0` to prevent squishing when content is scrolled
+
+#### Spacing and Layout Improvements
+- **Panel Padding**: Added consistent `p-4` padding to both left and right panels in non-exporting mode
+- **Bottom Section Spacing**: Added `pt-4` padding to the bottom main table section
+- **Dashboard Wrapper**: Removed unnecessary `space-y-6` wrapper spacing for tighter layout
+- **Header Consistency**: All panel headers now use consistent `px-4 py-3` padding
+
+#### Column Width Constraints and Tooltips
+- **Name Column Width**: Added `max-w-[300px]` constraint to playlist name columns in PlaylistTable
+- **Tooltip Support**: All truncated text now shows full content via `title` attribute on hover
+- **Table Cells**: Added tooltips to:
+  - PlaylistTable: Name column (both regular and liked songs rows)
+  - SelectedPlaylistsPanel: Name column
+  - UnmatchedSongsPanel: Title, Album, and Artist columns
+  - PlaylistTable: Owner column (already had tooltip support)
+
+#### Empty State Improvements
+- **Centering**: Empty states in UnmatchedSongsPanel use `flex-1` for proper vertical centering
+- **Consistent Styling**: Empty states maintain the same visual hierarchy as populated states
+
+### Technical Implementation Details
+
+#### Component Updates
+| Component | Changes |
+|-----------|---------|
+| `ExportLayoutManager.tsx` | Added padding to top section panels and bottom section |
+| `SelectedPlaylistsPanel.tsx` | Added scrollable container with sticky header and tooltips |
+| `UnmatchedSongsPanel.tsx` | Added scrollable container with sticky header and tooltips |
+| `PlaylistTable.tsx` | Added max-width constraints and tooltip support to name columns |
+| `Dashboard.tsx` | Removed unnecessary wrapper spacing |
+
+#### CSS Classes Added
+- `flex flex-col h-full`: Full-height flex container
+- `overflow-auto flex-1`: Scrollable content area
+- `sticky top-0`: Sticky table headers
+- `max-w-[300px]`: Column width constraints
+- `title={text}`: Tooltip attributes
+
+### User Experience Benefits
+- **Better Scrolling**: Tables in top sections now scroll independently without affecting layout
+- **Improved Readability**: Constrained column widths prevent excessive horizontal stretching
+- **Enhanced Usability**: Tooltips provide full text content when truncated
+- **Consistent Spacing**: Proper spacing between all dashboard sections
+- **Responsive Design**: All changes maintain dark mode and responsive behavior
 
 ---
 
