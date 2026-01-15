@@ -1132,6 +1132,22 @@ Updated on: January 11, 2026
 
 ## UI Improvements (January 15, 2026) ✅ Completed
 
+### Bottom Table Height Fix (January 15, 2026) ✅ Completed
+
+#### Fixed Viewport Overflow Issues
+- **PlaylistTable Layout**: Changed to `flex flex-col h-full overflow-hidden` for proper height containment
+- **Scrollable Table Container**: Replaced fixed `max-h-[calc(100vh-250px)]` with `overflow-auto h-full`
+- **Search Bar Positioning**: Added `flex-shrink-0` to search bar to maintain visibility
+- **Footer Positioning**: Added `flex-shrink-0` to stats footer to keep it visible at bottom
+- **Layout Consistency**: Now uses flex-based layout that respects parent container's 50% height allocation
+
+#### Benefits
+- Table content properly constrains to its allocated viewport space (50% of screen)
+- Table scrolls independently without affecting other dashboard sections
+- Search bar and stats footer remain visible and accessible
+- No more content overflow beyond viewport boundaries
+- Consistent scrolling behavior across all dashboard sections
+
 ### Visual Presentation Enhancements
 
 #### Scrollable Table Containers
