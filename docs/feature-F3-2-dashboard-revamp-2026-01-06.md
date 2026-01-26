@@ -388,7 +388,7 @@ The Selected Playlists table in the left section supports:
 - Select All → shows all tracks from all selected playlists
 - Independent from row click (clicking row still shows playlist details)
 
-### 2.5 Songs Detail Panel 📋 TO BE IMPLEMENTED (Updated January 16, 2026)
+### 2.5 Songs Detail Panel ✅ Completed (January 16, 2026)
 
 **Location:** Right section (Before/During Export)
 
@@ -551,7 +551,7 @@ The separate Statistics Panel has been removed. Statistics are now displayed as 
 - Handles both Liked Songs and regular playlists
 - Approximately 40 lines of minimal code added
 
-### 2.5.2 Songs Panel Display with Playlist Grouping 📋 TO BE IMPLEMENTED (Updated January 16, 2026)
+### 2.5.2 Songs Panel Display with Playlist Grouping ✅ Completed (January 16, 2026)
 
 **Current Behavior:** Unmatched Songs panel shows only unmatched tracks from a single selected playlist.
 

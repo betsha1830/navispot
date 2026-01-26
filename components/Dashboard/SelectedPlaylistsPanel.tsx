@@ -20,6 +20,9 @@ interface SelectedPlaylistsPanelProps {
   onPlaylistClick: (id: string) => void;
   currentPlaylistId: string | null;
   isExporting: boolean;
+  checkedPlaylistIds: Set<string>;
+  onToggleCheck: (id: string) => void;
+  onToggleCheckAll: () => void;
   statistics?: {
     matched: number;
     unmatched: number;
@@ -45,9 +48,14 @@ export function SelectedPlaylistsPanel({
   onPlaylistClick,
   currentPlaylistId,
   isExporting,
+  checkedPlaylistIds,
+  onToggleCheck,
+  onToggleCheckAll,
   statistics,
 }: SelectedPlaylistsPanelProps) {
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
+
+  const allChecked = selectedPlaylists.length > 0 && selectedPlaylists.every(p => checkedPlaylistIds.has(p.id));
 
   const toggleRow = (id: string) => {
     setExpandedRows((prev) => {
@@ -94,6 +102,14 @@ export function SelectedPlaylistsPanel({
         <table className="w-full">
           <thead className="bg-zinc-50 dark:bg-zinc-800/50 sticky top-0">
             <tr className="border-b border-zinc-200 dark:border-zinc-800">
+              <th className="w-12 px-4 py-2">
+                <input
+                  type="checkbox"
+                  checked={allChecked}
+                  onChange={onToggleCheckAll}
+                  className="rounded border-zinc-300 dark:border-zinc-600"
+                />
+              </th>
               <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
                 Name
               </th>
@@ -107,50 +123,59 @@ export function SelectedPlaylistsPanel({
           </thead>
           <tbody className="divide-y divide-zinc-200 dark:divide-zinc-800">
             {selectedPlaylists.map((playlist) => (
-              <>
-                <tr
-                  key={playlist.id}
+              <tr
+                key={playlist.id}
+                className={`
+                  transition-colors
+                  ${currentPlaylistId === playlist.id 
+                    ? 'bg-zinc-100 dark:bg-zinc-800 border-l-4 border-l-green-500' 
+                    : 'hover:bg-zinc-50 dark:hover:bg-zinc-800/50'}
+                `}
+              >
+                <td className="w-12 px-4 py-3">
+                  <input
+                    type="checkbox"
+                    checked={checkedPlaylistIds.has(playlist.id)}
+                    onChange={() => onToggleCheck(playlist.id)}
+                    className="rounded border-zinc-300 dark:border-zinc-600"
+                  />
+                </td>
+                <td 
+                  className="px-4 py-3 text-sm font-medium text-zinc-900 dark:text-zinc-100 truncate max-w-[200px] cursor-pointer" 
+                  title={playlist.name}
                   onClick={() => onPlaylistClick(playlist.id)}
-                  className={`
-                    cursor-pointer transition-colors
-                    ${currentPlaylistId === playlist.id 
-                      ? 'bg-zinc-100 dark:bg-zinc-800 border-l-4 border-l-green-500' 
-                      : 'hover:bg-zinc-50 dark:hover:bg-zinc-800/50'}
-                  `}
                 >
-                  <td className="px-4 py-3 text-sm font-medium text-zinc-900 dark:text-zinc-100 truncate max-w-[200px]" title={playlist.name}>
-                    {playlist.name}
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-medium border ${statusColors[playlist.status]}`}>
-                      {statusLabels[playlist.status]}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-sm text-zinc-600 dark:text-zinc-400">
-                      <div className="w-24">
-                        <div className="flex justify-between text-xs text-zinc-500 dark:text-zinc-400 mb-1">
-                          <span>{playlist.progress}%</span>
-                        </div>
-                        <div className="h-2 bg-zinc-100 dark:bg-zinc-800 rounded-full overflow-hidden">
-                          <div
-                            className={`h-full transition-all duration-300 ${
-                              playlist.status === 'exported' 
-                                ? 'bg-green-500' 
-                                : playlist.status === 'exporting'
-                                ? 'bg-blue-500'
-                                : 'bg-zinc-300 dark:bg-zinc-700'
-                            }`}
-                            style={{ width: `${playlist.progress}%` }}
-                          />
-                        </div>
-                      </div>
-                    </td>
-                </tr>
-              </>
+                  {playlist.name}
+                </td>
+                <td className="px-4 py-3">
+                  <span className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-medium border ${statusColors[playlist.status]}`}>
+                    {statusLabels[playlist.status]}
+                  </span>
+                </td>
+                <td className="px-4 py-3 text-sm text-zinc-600 dark:text-zinc-400">
+                  <div className="w-24">
+                    <div className="flex justify-between text-xs text-zinc-500 dark:text-zinc-400 mb-1">
+                      <span>{playlist.progress}%</span>
+                    </div>
+                    <div className="h-2 bg-zinc-100 dark:bg-zinc-800 rounded-full overflow-hidden">
+                      <div
+                        className={`h-full transition-all duration-300 ${
+                          playlist.status === 'exported' 
+                            ? 'bg-green-500' 
+                            : playlist.status === 'exporting'
+                            ? 'bg-blue-500'
+                            : 'bg-zinc-300 dark:bg-zinc-700'
+                        }`}
+                        style={{ width: `${playlist.progress}%` }}
+                      />
+                    </div>
+                  </div>
+                </td>
+              </tr>
             ))}
             {selectedPlaylists.length === 0 && (
               <tr>
-                <td colSpan={3} className="px-4 py-8 text-center text-sm text-zinc-500 dark:text-zinc-400">
+                <td colSpan={4} className="px-4 py-8 text-center text-sm text-zinc-500 dark:text-zinc-400">
                   No playlists selected. Select playlists from the table below to export.
                 </td>
               </tr>

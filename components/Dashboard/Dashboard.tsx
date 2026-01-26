@@ -12,6 +12,7 @@ import { ExportLayoutManager } from '@/components/Dashboard/ExportLayoutManager'
 import { ConfirmationPopup } from '@/components/Dashboard/ConfirmationPopup';
 import { SelectedPlaylistsPanel, SelectedPlaylist } from '@/components/Dashboard/SelectedPlaylistsPanel';
 import { UnmatchedSongsPanel, UnmatchedSong } from '@/components/Dashboard/UnmatchedSongsPanel';
+import { SongsPanel, PlaylistGroup, Song } from '@/components/Dashboard/SongsPanel';
 import { ProgressState } from '@/components/ProgressTracker';
 import { createBatchMatcher, BatchMatcherOptions } from '@/lib/matching/batch-matcher';
 import { getMatchStatistics } from '@/lib/matching/orchestrator';
@@ -69,6 +70,7 @@ export function Dashboard() {
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   const [searchQuery, setSearchQuery] = useState('');
   const [showSuccess, setShowSuccess] = useState(false);
+  const [checkedPlaylistIds, setCheckedPlaylistIds] = useState<Set<string>>(new Set());
 
   const isExportingRef = useRef(false);
 
@@ -282,6 +284,26 @@ export function Dashboard() {
       setSelectedIds(new Set());
     } else {
       setSelectedIds(new Set(filteredItems.map((item) => item.id)));
+    }
+  };
+
+  const handleTogglePlaylistCheck = (playlistId: string) => {
+    setCheckedPlaylistIds((prev) => {
+      const newSet = new Set(prev);
+      if (newSet.has(playlistId)) {
+        newSet.delete(playlistId);
+      } else {
+        newSet.add(playlistId);
+      }
+      return newSet;
+    });
+  };
+
+  const handleToggleCheckAllPlaylists = () => {
+    if (checkedPlaylistIds.size === selectedPlaylistsStats.length && selectedPlaylistsStats.length > 0) {
+      setCheckedPlaylistIds(new Set());
+    } else {
+      setCheckedPlaylistIds(new Set(selectedPlaylistsStats.map((p) => p.id)));
     }
   };
 
@@ -591,6 +613,23 @@ export function Dashboard() {
     return result;
   }, [selectedIds, likedSongsCount, playlists]);
 
+  const playlistGroups: PlaylistGroup[] = useMemo(() => {
+    const groups: PlaylistGroup[] = [];
+
+    selectedPlaylistsStats
+      .filter((p) => checkedPlaylistIds.has(p.id))
+      .forEach((playlist) => {
+        // For now, create empty groups - will be populated during export
+        groups.push({
+          playlistId: playlist.id,
+          playlistName: playlist.name,
+          songs: [], // Will be populated with actual tracks
+        });
+      });
+
+    return groups;
+  }, [selectedPlaylistsStats, checkedPlaylistIds]);
+
   const fixedExportButton = (
     <div className="fixed bottom-6 right-6 z-50">
       <button
@@ -613,6 +652,9 @@ export function Dashboard() {
       onPlaylistClick={handlePlaylistClick}
       currentPlaylistId={currentUnmatchedPlaylistId}
       isExporting={isExporting}
+      checkedPlaylistIds={checkedPlaylistIds}
+      onToggleCheck={handleTogglePlaylistCheck}
+      onToggleCheckAll={handleToggleCheckAllPlaylists}
       statistics={{
         matched: selectedPlaylistsStats.reduce((sum, s) => sum + s.matched, 0),
         unmatched: selectedPlaylistsStats.reduce((sum, s) => sum + s.unmatched, 0),
@@ -622,11 +664,8 @@ export function Dashboard() {
     />
   );
 
-  const unmatchedSongsSection = (
-    <UnmatchedSongsPanel
-      unmatchedSongs={unmatchedSongs}
-      isEmpty={currentUnmatchedPlaylistId === null}
-    />
+  const songsSection = (
+    <SongsPanel playlistGroups={playlistGroups} />
   );
 
   const mainTableSection = (
@@ -707,7 +746,7 @@ export function Dashboard() {
 
       <ExportLayoutManager
         selectedPlaylistsSection={selectedPlaylistsSection}
-        unmatchedSongsSection={unmatchedSongsSection}
+        unmatchedSongsSection={songsSection}
         mainTableSection={mainTableSection}
         fixedExportButton={fixedExportButton}
       />
