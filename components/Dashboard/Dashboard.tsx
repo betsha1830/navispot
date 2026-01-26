@@ -909,26 +909,50 @@ export function Dashboard() {
           if (result.playlistId) {
             const tracksData: Record<string, TrackExportStatus> = {};
 
-            const cachedMatched = cachedData?.statistics.matched || 0;
-            const cachedUnmatched = cachedData?.statistics.unmatched || 0;
-            const cachedAmbiguous = cachedData?.statistics.ambiguous || 0;
+            let matchedCount = 0;
+            let unmatchedCount = 0;
+            let ambiguousCount = 0;
 
-            tracks.forEach((track, index) => {
-              const match = matches[index];
-              if (match) {
-                const isAlreadyCached = cachedData?.tracks[track.id];
-                if (!isAlreadyCached || useDifferentialMatching && newTracks.includes(track)) {
-                  tracksData[track.id] = {
+            Object.entries(tracksData).forEach(([spotifyTrackId, trackData]) => {
+              const isFromCache = cachedData?.tracks[spotifyTrackId] && !newTracks.some(t => t.id === spotifyTrackId);
+              
+              if (isFromCache) {
+                // Track was already cached, preserve original cache data and don't count in statistics
+                if (cachedData) {
+                  tracksData[spotifyTrackId] = cachedData.tracks[spotifyTrackId];
+                }
+              } else if (match) {
+                // Track is newly matched, save new data and count in statistics
+                tracksData[spotifyTrackId] = {
+                  spotifyTrackId: track.id,
+                  navidromeSongId: match.navidromeSong?.id,
+                  status: match.status,
+                  matchStrategy: match.matchStrategy,
+                  matchScore: match.matchScore,
+                  matchedAt: new Date().toISOString(),
+                };
+
+                if (match.status === 'matched') {
+                  matchedCount++;
+                } else if (match.status === 'ambiguous') {
+                  ambiguousCount++;
+                } else {
+                  unmatchedCount++;
+                }
+              } else {
+                // Track has no match (unmatched), preserve as waiting
+                if (cachedData && cachedData.tracks[spotifyTrackId]) {
+                  tracksData[spotifyTrackId] = cachedData.tracks[spotifyTrackId];
+                } else {
+                  tracksData[spotifyTrackId] = {
                     spotifyTrackId: track.id,
-                    navidromeSongId: match.navidromeSong?.id,
-                    status: match.status,
-                    matchStrategy: match.matchStrategy,
-                    matchScore: match.matchScore,
+                    status: 'unmatched' as const,
+                    matchStrategy: 'none' as const,
+                    matchScore: 0,
                     matchedAt: new Date().toISOString(),
                   };
-                } else if (cachedData) {
-                  tracksData[track.id] = cachedData.tracks[track.id];
                 }
+                unmatchedCount++;
               }
             });
 
@@ -939,12 +963,12 @@ export function Dashboard() {
               navidromePlaylistId: result.playlistId,
               exportedAt: new Date().toISOString(),
               trackCount: tracks.length,
-              tracks: cachedData ? { ...cachedData.tracks, ...tracksData } : tracksData,
+              tracks: tracksData,
               statistics: {
                 total: tracks.length,
-                matched: cachedMatched + statistics.matched,
-                unmatched: cachedUnmatched + statistics.unmatched,
-                ambiguous: cachedAmbiguous + statistics.ambiguous,
+                matched: matchedCount,
+                unmatched: unmatchedCount,
+                ambiguous: ambiguousCount,
               },
             };
             savePlaylistExportData(item.id, updatedCache);
