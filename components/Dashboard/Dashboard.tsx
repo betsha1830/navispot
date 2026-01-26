@@ -73,6 +73,7 @@ export function Dashboard() {
   const [checkedPlaylistIds, setCheckedPlaylistIds] = useState<Set<string>>(new Set());
   const [playlistTracksCache, setPlaylistTracksCache] = useState<Map<string, Song[]>>(new Map());
   const [loadingTracks, setLoadingTracks] = useState(false);
+  const [loadingPlaylistIds, setLoadingPlaylistIds] = useState<Set<string>>(new Set());
 
   const isExportingRef = useRef(false);
 
@@ -243,6 +244,7 @@ export function Dashboard() {
       if (uncachedIds.length === 0) return;
 
       setLoadingTracks(true);
+      setLoadingPlaylistIds(new Set(uncachedIds));
 
       try {
         spotifyClient.setToken(spotify.token);
@@ -268,9 +270,23 @@ export function Dashboard() {
               }));
 
               newCache.set(id, songs);
+              
+              // Remove from loading set as soon as this playlist is done
+              setLoadingPlaylistIds(prev => {
+                const updated = new Set(prev);
+                updated.delete(id);
+                return updated;
+              });
             } catch (error) {
               console.error(`Failed to fetch tracks for playlist ${id}:`, error);
               newCache.set(id, []);
+              
+              // Remove from loading set on error too
+              setLoadingPlaylistIds(prev => {
+                const updated = new Set(prev);
+                updated.delete(id);
+                return updated;
+              });
             }
           })
         );
@@ -280,6 +296,7 @@ export function Dashboard() {
         console.error('Failed to fetch tracks:', error);
       } finally {
         setLoadingTracks(false);
+        setLoadingPlaylistIds(new Set());
       }
     }
 
@@ -679,8 +696,9 @@ export function Dashboard() {
         playlistId: playlist.id,
         playlistName: playlist.name,
         songs: playlistTracksCache.get(playlist.id) || [],
+        isLoading: loadingPlaylistIds.has(playlist.id),
       }));
-  }, [selectedPlaylistsStats, checkedPlaylistIds, playlistTracksCache]);
+  }, [selectedPlaylistsStats, checkedPlaylistIds, playlistTracksCache, loadingPlaylistIds]);
 
   const fixedExportButton = (
     <div className="fixed bottom-6 right-6 z-50">

@@ -426,12 +426,10 @@ The Selected Playlists table in the left section supports:
 **Example Display:**
 ```
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-💿 Liked Songs (150 tracks)
+💿 Liked Songs (150 tracks)                    Fetching...
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # | Title          | Album        | Artist      | Duration
-1 | Song 1         | Album A      | Artist X    | 3:45
-2 | Song 2         | Album B      | Artist Y    | 4:12
-3 | Song 3         | Album C      | Artist Z    | 2:58
+(Loading...)
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 💿 Playlist A (42 tracks)
@@ -441,6 +439,8 @@ The Selected Playlists table in the left section supports:
 2 | Song 5         | Album E      | Artist B    | 5:01
 3 | Song 6         | Album F      | Artist C    | 3:33
 ```
+
+Note: The CD icon (💿) spins and "Fetching..." text appears at the far right while tracks are being loaded for that specific playlist.
 
 **Interaction:**
 - **No Track Selection:** Songs panel is read-only - only displays track information
@@ -459,6 +459,7 @@ The Selected Playlists table in the left section supports:
 - **Automatic Fetching:** Tracks are fetched automatically when playlists are checked
 - **Auto-Check Default:** All playlists automatically checked when added to Selected Playlists table
 - **Loading Animation:** Spinner with "Loading Tracks..." message shown while fetching
+- **Per-Playlist Loading Indicator:** Each playlist shows spinning CD (💿) + "Fetching..." text in header while loading
 - **Caching Strategy:** Fetched tracks are cached to avoid redundant API calls
 - **Parallel Loading:** Multiple playlists fetched in parallel for better performance
 - **Loading State:** Blue spinning border animation during fetch operations

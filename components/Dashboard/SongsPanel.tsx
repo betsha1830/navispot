@@ -13,6 +13,7 @@ export interface PlaylistGroup {
   playlistId: string;
   playlistName: string;
   songs: Song[];
+  isLoading?: boolean;
 }
 
 interface SongsPanelProps {
@@ -103,11 +104,18 @@ export function SongsPanel({ playlistGroups, isLoading = false }: SongsPanelProp
                 <tr>
                   <td colSpan={5} className="bg-zinc-100 dark:bg-zinc-800 px-4 py-2 font-semibold text-sm border-t-2 border-zinc-300 dark:border-zinc-700">
                     <div className="flex items-center gap-2">
-                      <span>💿</span>
+                      <span className={group.isLoading ? 'animate-spin inline-block' : ''}>
+                        💿
+                      </span>
                       <span>{group.playlistName}</span>
                       <span className="text-zinc-500 dark:text-zinc-400 font-normal">
                         ({group.songs.length} tracks)
                       </span>
+                      {group.isLoading && (
+                        <span className="ml-auto text-blue-500 text-xs font-normal flex items-center gap-1">
+                          <span className="animate-pulse">Fetching...</span>
+                        </span>
+                      )}
                     </div>
                   </td>
                 </tr>
