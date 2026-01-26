@@ -262,6 +262,7 @@ BatchMatcher.matchTracks()
 - Row numbering resets to 1 for each playlist group
 - Loading animation while fetching from Spotify
 - Empty state when no playlists checked
+- **Track export status** shown via row color coding (real-time updates)
 
 **Columns:**
 | Column | Width | Content |
@@ -272,13 +273,29 @@ BatchMatcher.matchTracks()
 | Artist | 20% | Artist name (truncated with tooltip) |
 | Duration | 10% | Track duration (mm:ss) |
 
+**Track Export Status Indicators (Row Colors):**
+| Status | Row Color (Light Mode) | Row Color (Dark Mode) | Meaning |
+|--------|------------------------|----------------------|---------|
+| Waiting | Default (grayish/white) | Default (dark) | Track not yet processed |
+| Exported | Green `bg-green-50` | Green `bg-green-900/20` | Track successfully matched during matching phase |
+| Failed | Red `bg-red-50` | Red `bg-red-900/20` | Track failed to match (unmatched) |
+
+**Real-Time Status Updates:**
+- Status updates **live during matching phase** as each track is processed
+- Tracks turn green when `status === 'matched'` or `status === 'ambiguous'`
+- Tracks turn red when `status === 'unmatched'`
+- Updates synchronized with Selected Playlists Panel statistics badges
+- Color persists after export completes (no export-phase status updates)
+
 **Visual Grouping:**
 ```
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 💿 Liked Songs (150 tracks)                    Fetching...
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # | Title          | Album        | Artist      | Duration
-(Loading...)
+1  | [GREEN] Song A | Album X      | Artist 1    | 3:45
+2  | [GREEN] Song B | Album Y      | Artist 2    | 4:20
+3  | [RED]   Song C | Album Z      | Artist 3    | 2:55
 ```
 
 **Track Fetching & Caching:**

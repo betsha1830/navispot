@@ -74,6 +74,7 @@ export function Dashboard() {
   const [playlistTracksCache, setPlaylistTracksCache] = useState<Map<string, Song[]>>(new Map());
   const [loadingTracks, setLoadingTracks] = useState(false);
   const [loadingPlaylistIds, setLoadingPlaylistIds] = useState<Set<string>>(new Set());
+  const [songExportStatus, setSongExportStatus] = useState<Map<string, Map<number, 'waiting' | 'exported' | 'failed'>>>(new Map());
 
   const isExportingRef = useRef(false);
 
@@ -464,6 +465,17 @@ export function Dashboard() {
         const item = itemsToExport[i];
         let progress = createInitialProgressState(0);
         setProgressState(progress);
+
+        setSongExportStatus((prev) => {
+          const newStatus = new Map(prev);
+          const playlistStatus = new Map();
+          const songs = playlistTracksCache.get(item.id) || [];
+          songs.forEach((_, idx) => {
+            playlistStatus.set(idx, 'waiting');
+          });
+          newStatus.set(item.id, playlistStatus);
+          return newStatus;
+        });
         
         // Update status to 'exporting' at the start of processing each playlist
         setSelectedPlaylistsStats((prev) =>
@@ -511,14 +523,29 @@ export function Dashboard() {
             setProgressState({ ...progress });
             setSelectedPlaylistsStats((prev) =>
               prev.map((stat, idx) =>
-                idx === i ? { 
-                  ...stat, 
+                idx === i ? {
+                  ...stat,
                   progress: batchProgress.percent,
                   matched: batchProgress.matched ?? stat.matched,
                   unmatched: batchProgress.unmatched ?? stat.unmatched,
                 } : stat
               )
             );
+            if (batchProgress.currentMatch) {
+              const trackIndex = batchProgress.current - 1;
+              const match = batchProgress.currentMatch;
+              setSongExportStatus((prev) => {
+                const newStatus = new Map(prev);
+                const playlistStatus = new Map(prev.get(item.id) || []);
+                if (match.status === 'matched' || match.status === 'ambiguous') {
+                  playlistStatus.set(trackIndex, 'exported');
+                } else {
+                  playlistStatus.set(trackIndex, 'failed');
+                }
+                newStatus.set(item.id, playlistStatus);
+                return newStatus;
+              });
+            }
           }
         );
 
@@ -693,6 +720,7 @@ export function Dashboard() {
     setSelectedPlaylistsStats([]);
     setCurrentUnmatchedPlaylistId(null);
     setUnmatchedSongs([]);
+    setSongExportStatus(new Map());
   };
 
   const handlePlaylistClick = (id: string) => {
@@ -721,13 +749,21 @@ export function Dashboard() {
   const playlistGroups: PlaylistGroup[] = useMemo(() => {
     return selectedPlaylistsStats
       .filter((p) => checkedPlaylistIds.has(p.id))
-      .map((playlist) => ({
-        playlistId: playlist.id,
-        playlistName: playlist.name,
-        songs: playlistTracksCache.get(playlist.id) || [],
-        isLoading: loadingPlaylistIds.has(playlist.id),
-      }));
-  }, [selectedPlaylistsStats, checkedPlaylistIds, playlistTracksCache, loadingPlaylistIds]);
+      .map((playlist) => {
+        const songs = playlistTracksCache.get(playlist.id) || [];
+        const statusMap = songExportStatus.get(playlist.id);
+        const songsWithStatus = songs.map((song, index) => ({
+          ...song,
+          exportStatus: statusMap?.get(index) || 'waiting',
+        }));
+        return {
+          playlistId: playlist.id,
+          playlistName: playlist.name,
+          songs: songsWithStatus,
+          isLoading: loadingPlaylistIds.has(playlist.id),
+        };
+      });
+  }, [selectedPlaylistsStats, checkedPlaylistIds, playlistTracksCache, loadingPlaylistIds, songExportStatus]);
 
   const fixedExportButton = (
     <div className="fixed bottom-6 right-6 z-50">

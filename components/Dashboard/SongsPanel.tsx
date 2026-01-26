@@ -7,6 +7,7 @@ export interface Song {
   album: string;
   artist: string;
   duration: string;
+  exportStatus?: 'waiting' | 'exported' | 'failed';
 }
 
 export interface PlaylistGroup {
@@ -123,7 +124,13 @@ export function SongsPanel({ playlistGroups, isLoading = false }: SongsPanelProp
                 {group.songs.map((song, index) => (
                   <tr
                     key={`${group.playlistId}-${index}`}
-                    className="hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors border-b border-zinc-200 dark:border-zinc-800"
+                    className={`hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors border-b border-zinc-200 dark:border-zinc-800 ${
+                      song.exportStatus === 'exported'
+                        ? 'bg-green-50 dark:bg-green-900/20'
+                        : song.exportStatus === 'failed'
+                        ? 'bg-red-50 dark:bg-red-900/20'
+                        : ''
+                    }`}
                   >
                     <td className="px-4 py-2 text-sm text-zinc-500 dark:text-zinc-400">
                       {index + 1}

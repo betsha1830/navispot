@@ -8,6 +8,7 @@ export interface BatchMatcherProgress {
   current: number;
   total: number;
   currentTrack?: SpotifyTrack;
+  currentMatch?: TrackMatch;
   percent: number;
   matched?: number;
   unmatched?: number;
@@ -130,6 +131,7 @@ export class DefaultBatchMatcher implements BatchMatcher {
             current: i + 1,
             total,
             currentTrack: track,
+            currentMatch: match[0],
             percent: Math.round(((i + 1) / total) * 100),
             matched,
             unmatched,
@@ -168,6 +170,7 @@ export class DefaultBatchMatcher implements BatchMatcher {
           await onProgress({
             current: processed,
             total,
+            currentMatch: chunkResults[chunkResults.length - 1],
             percent: Math.round((processed / total) * 100),
             matched,
             unmatched,
