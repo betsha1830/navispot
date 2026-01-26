@@ -464,6 +464,13 @@ export function Dashboard() {
         const item = itemsToExport[i];
         let progress = createInitialProgressState(0);
         setProgressState(progress);
+        
+        // Update status to 'exporting' at the start of processing each playlist
+        setSelectedPlaylistsStats((prev) =>
+          prev.map((stat, idx) =>
+            idx === i ? { ...stat, status: 'exporting' } : stat
+          )
+        );
 
         let tracks: SpotifyTrack[];
         let isLikedSongs = false;
@@ -502,6 +509,16 @@ export function Dashboard() {
               },
             });
             setProgressState({ ...progress });
+            setSelectedPlaylistsStats((prev) =>
+              prev.map((stat, idx) =>
+                idx === i ? { 
+                  ...stat, 
+                  progress: batchProgress.percent,
+                  matched: batchProgress.matched ?? stat.matched,
+                  unmatched: batchProgress.unmatched ?? stat.unmatched,
+                } : stat
+              )
+            );
           }
         );
 
@@ -556,7 +573,13 @@ export function Dashboard() {
               setProgressState({ ...progress });
               setSelectedPlaylistsStats((prev) =>
                 prev.map((stat, idx) =>
-                  idx === i ? { ...stat, progress: exportProgress.percent, exported: exportProgress.current } : stat
+                  idx === i ? { 
+                    ...stat, 
+                    progress: exportProgress.percent, 
+                    exported: exportProgress.current,
+                    matched: statistics.matched,
+                    unmatched: statistics.unmatched + statistics.ambiguous,
+                  } : stat
                 )
               );
             },
@@ -601,7 +624,13 @@ export function Dashboard() {
               setSelectedPlaylistsStats((prev) =>
                 prev.map((stat, idx) =>
                   idx === i
-                    ? { ...stat, progress: exportProgress.percent, exported: exportProgress.current }
+                    ? { 
+                        ...stat, 
+                        progress: exportProgress.percent, 
+                        exported: exportProgress.current,
+                        matched: statistics.matched,
+                        unmatched: statistics.unmatched,
+                      }
                     : stat
                 )
               );

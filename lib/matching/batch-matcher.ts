@@ -9,6 +9,8 @@ export interface BatchMatcherProgress {
   total: number;
   currentTrack?: SpotifyTrack;
   percent: number;
+  matched?: number;
+  unmatched?: number;
 }
 
 export type ProgressCallback = (progress: BatchMatcherProgress) => void | Promise<void>;
@@ -112,12 +114,25 @@ export class DefaultBatchMatcher implements BatchMatcher {
         const match = await matchTracks(this.navidromeClient, [track], orchestratorOptions);
         matches.push(match[0]);
 
+        // Calculate partial statistics
+        let matched = 0;
+        let unmatched = 0;
+        for (const m of matches) {
+          if (m.status === 'matched' || m.status === 'ambiguous') {
+            matched++;
+          } else {
+            unmatched++;
+          }
+        }
+
         if (onProgress) {
           await onProgress({
             current: i + 1,
             total,
             currentTrack: track,
             percent: Math.round(((i + 1) / total) * 100),
+            matched,
+            unmatched,
           });
         }
       }
@@ -138,11 +153,24 @@ export class DefaultBatchMatcher implements BatchMatcher {
         matches.push(...chunkResults);
         processed += chunk.length;
 
+        // Calculate partial statistics
+        let matched = 0;
+        let unmatched = 0;
+        for (const m of matches) {
+          if (m.status === 'matched' || m.status === 'ambiguous') {
+            matched++;
+          } else {
+            unmatched++;
+          }
+        }
+
         if (onProgress) {
           await onProgress({
             current: processed,
             total,
             percent: Math.round((processed / total) * 100),
+            matched,
+            unmatched,
           });
         }
       }

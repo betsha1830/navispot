@@ -43,7 +43,7 @@ Located in `lib/matching/batch-matcher.ts`:
 
 ### Progress Tracking
 
-The batch matcher supports progress tracking via a callback mechanism:
+The batch matcher supports progress tracking via a callback mechanism with real-time statistics:
 
 ```typescript
 interface BatchMatcherProgress {
@@ -51,10 +51,14 @@ interface BatchMatcherProgress {
   total: number;            // Total number of tracks
   currentTrack?: SpotifyTrack;  // Track currently being processed
   percent: number;          // Percentage complete (0-100)
+  matched?: number;         // Count of successfully matched tracks so far
+  unmatched?: number;       // Count of unmatched tracks so far
 }
 
 type ProgressCallback = (progress: BatchMatcherProgress) => void | Promise<void>;
 ```
+
+The `matched` and `unmatched` fields are calculated incrementally during processing and provide live statistics for UI updates. Tracks with status `'matched'` or `'ambiguous'` are counted as matched, while tracks with status `'unmatched'` are counted as unmatched.
 
 ### Options
 

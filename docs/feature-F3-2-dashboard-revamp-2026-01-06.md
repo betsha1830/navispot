@@ -139,8 +139,9 @@ Position: Fixed at bottom-right of screen (like cookie banner)
 Layout remains identical to before/after export. Only these dynamic elements change:
 
 **Selected Playlists Table (Left Column):**
-- Progress bars appear for each playlist
-- Status badges update in real-time (Exporting → Exported)
+- Progress bars appear for each playlist and update live from 0% → 100%
+- Status badges update in real-time (Pending → Exporting → Exported)
+- Statistics badges (Total, Matched, Unmatched) update live during both matching and exporting phases
 - Currently exporting playlist highlighted
 
 **Songs/Unmatched Panel (Right Column):**
@@ -185,11 +186,13 @@ Layout remains identical to before/after export. Only these dynamic elements cha
 
 **During Export:**
 1. Layout unchanged, button changes to "Cancel Export" (red)
-2. Progress bars appear in Selected Playlists table
-3. Statistics badges update in real-time
-4. Status badges update (Exporting → Exported)
-5. Bottom table interactions disabled
-6. User can click "Cancel Export" to abort
+2. Status badge changes to "Exporting" at start of each playlist
+3. **Matching Phase:** Progress bars update from 0% → 100% as tracks are matched
+4. **Matching Phase:** Statistics badges (Matched, Unmatched) update incrementally as each track is processed
+5. **Export Phase:** Progress bars continue updating from 0% → 100% as tracks are exported to Navidrome
+6. **Export Phase:** Exported count updates incrementally as tracks are written to Navidrome
+7. Bottom table interactions disabled
+8. User can click "Cancel Export" to abort
 
 **After Export:**
 1. Layout unchanged, button reverts to "Export Selected" (blue)
@@ -213,9 +216,37 @@ Layout remains identical to before/after export. Only these dynamic elements cha
 **Auto-Check by Default:** All playlists checked when added
 **Playlist Checkboxes:** Select All header + individual checkboxes
 **Row Click Selection:** Clicking row toggles checkbox
-**Status Column:** Exported / Exporting / Pending
-**Progress Bar:** Visual indicator during export
-**Aggregate Statistics:** Inline badges (Total, Matched, Unmatched)
+**Status Column:** Pending / Exporting (during both matching and exporting) / Exported / Failed
+**Progress Bar:** Live updates 0% → 100% during BOTH matching and exporting phases
+**Aggregate Statistics:** Live incremental updates (Total, Matched, Unmatched) during matching and export phases
+
+### Real-time Update Implementation
+
+**During Matching Phase:**
+- Progress bar updates incrementally as each track is matched: `Math.round((current / total) * 100)`
+- Matched count updates as tracks are successfully matched (status: 'matched' or 'ambiguous')
+- Unmatched count updates as tracks fail to match (status: 'unmatched')
+- Status badge shows "Exporting" (blue) during matching to indicate active processing
+
+**During Export Phase:**
+- Progress bar updates as each track is written to Navidrome: `exportProgress.percent`
+- Matched and Unmatched counts remain constant from matching phase
+- Exported count increments as each track is successfully exported to Navidrome
+- Status badge remains "Exporting" (blue) during export
+
+**Data Flow:**
+```
+BatchMatcher.matchTracks()
+  → onProgress callback with { current, total, percent, matched, unmatched }
+    → setSelectedPlaylistsStats() updates UI components
+      → SelectedPlaylistsPanel recalculates badge totals from all playlists
+```
+
+**Implementation Details:**
+- `selectedPlaylistsStats` state stores per-playlist progress and statistics
+- Statistics badges calculated as aggregates: `reduce((sum, s) => sum + s.matched, 0)`
+- Progress callbacks update the specific playlist by index in the array
+- All state updates trigger re-renders ensuring UI stays synchronized
 
 ---
 
@@ -466,6 +497,12 @@ interface PlaylistTableProps {
 6. Sync detection: Compare Spotify snapshot_id with stored snapshotId
 7. Real-time selected playlists: useEffect watches selectedIds changes
 8. Track fetching: useEffect watches checkedPlaylistIds changes
+9. **Live progress updates (January 26, 2026):**
+   - Set status to 'exporting' at start of each playlist processing
+   - Matching phase: Update progress bar (0% → 100%) and statistics badges (matched/unmatched) via batchProgress callback
+   - Export phase (favorites): Update progress bar and exported count via onProgress callback
+   - Export phase (playlists): Update progress bar and exported count via onProgress callback
+   - Statistics badges calculated as aggregates from selectedPlaylistsStats
 
 ---
 
@@ -486,3 +523,53 @@ interface PlaylistTableProps {
 - Search bar and stats footer remain accessible
 - No content overflow beyond viewport
 - Consistent scrolling across all dashboard sections
+
+---
+
+## Live Progress Update Implementation (January 26, 2026)
+
+### Problem
+Progress bars and statistics badges in the Selected Playlists Panel were not updating live during export. They only showed updates after each playlist completed processing.
+
+### Root Cause
+1. **Matching phase**: Progress updates were sent to `progressState` (unused) but not to `selectedPlaylistsStats`
+2. **Statistics badges**: Matched/unmatched counts were only set after matching completed, not incrementally
+3. **Export phase**: Only progress and exported counts were updated, not matched/unmatched
+
+### Solution
+
+#### lib/matching/batch-matcher.ts
+- Extended `BatchMatcherProgress` interface to include `matched` and `unmatched` fields
+- Updated `matchTracks` to calculate and include partial statistics in progress callback
+- Both sequential and concurrent processing now update statistics incrementally
+
+```typescript
+interface BatchMatcherProgress {
+  current: number;
+  total: number;
+  currentTrack?: SpotifyTrack;
+  percent: number;
+  matched?: number;
+  unmatched?: number;
+}
+```
+
+#### components/Dashboard/Dashboard.tsx
+**Matching Phase (lines 468-519):**
+- Set status to 'exporting' at start of each playlist
+- Update `progress` field with `batchProgress.percent` 
+- Update `matched` and `unmatched` fields from `batchProgress`
+
+**Export Phase - Favorites (lines 574-583):**
+- Update `progress` and `exported` from `exportProgress`
+- Maintain `matched` and `unmatched` from matching phase
+
+**Export Phase - Playlists (lines 624-632):**
+- Update `progress` and `exported` from `exportProgress`
+- Maintain `matched` and `unmatched` from matching phase
+
+### Result
+- Progress bars now update live 0% → 100% during BOTH matching AND exporting
+- Statistics badges (Total, Matched, Unmatched) update incrementally during matching
+- Status badges show "Exporting" during both phases
+- All UI elements stay synchronized throughout the export process
