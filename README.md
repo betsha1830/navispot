@@ -152,6 +152,47 @@ Update your Spotify Developer Dashboard with the new production redirect URI.
 └── docs/                  # Feature documentation
 ```
 
+## Documentation
+
+Detailed documentation is available in the `docs/` directory:
+
+- [Project Plan](docs/project-plan.md) - Complete architecture, feature breakdown, and implementation roadmap
+- [To-Do List](docs/to-do.md) - Current and planned improvements
+
+### Feature Documentation
+
+| Phase | Feature | Description |
+|-------|---------|-------------|
+| **F1** | [Project Setup](docs/feature-F1-1-project-setup.md) | Initial project configuration and tooling |
+| **F1** | [Spotify OAuth](docs/feature-F1-2-spotify-oauth.md) | Spotify authentication implementation |
+| **F1** | [Spotify API Client](docs/feature-F1-3-spotify-api-client.md) | Spotify Web API integration |
+| **F1** | [Navidrome API Client](docs/feature-F1-4-navidrome-api-client.md) | Navidrome Subsonic API integration |
+| **F1** | [Search Functionality](docs/feature-F1-5-search.md) | Search utilities for both APIs |
+| **F1** | [Auth Context](docs/feature-F1-6-auth-context.md) | Global authentication state management |
+| **F2** | [ISRC Matching](docs/feature-F2-1-isrc.md) | ISRC-based track matching algorithm |
+| **F2** | [Fuzzy Matching](docs/feature-F2-2-fuzzy-matching.md) | Fuzzy string matching algorithm |
+| **F2** | [Strict Matching](docs/feature-F2-3-strict-matching.md) | Exact string matching algorithm |
+| **F2** | [Matching Orchestrator](docs/feature-F2-4-matching-orchestrator.md) | Multi-strategy matching coordination |
+| **F2** | [Playlist Fetching](docs/feature-F2-5-playlist-fetching.md) | Spotify playlist retrieval |
+| **F2** | [Track Fetcher](docs/feature-F2-6-track-fetcher.md) | Track data retrieval with pagination |
+| **F2** | [Batch Matcher](docs/feature-F2-7-batch-matcher.md) | Bulk track matching operations |
+| **F2** | [Playlist Exporter](docs/feature-F2-8-playlist-exporter.md) | Navidrome playlist creation/update |
+| **F2** | [Saved Tracks](docs/feature-F2-9-saved-tracks.md) | Spotify saved tracks integration |
+| **F2** | [Favorites Export](docs/feature-F2-10-favorites-export.md) | Navidrome favorites synchronization |
+| **F3** | [Login Page](docs/feature-F3-1-login-page.md) | Authentication interface |
+| **F3** | [Spotify Connect Button](docs/feature-F3-1-spotify-button.md) | Spotify OAuth trigger component |
+| **F3** | [Navidrome Form](docs/feature-F3-1-navidrome-form.md) | Navidrome credentials input |
+| **F3** | [Dashboard](docs/feature-F3-2-dashboard.md) | Main playlist view and revamp details |
+| **F3** | [Playlist Detail View](docs/feature-F3-3-playlist-detail-view.md) | Track-by-track breakdown |
+| **F3** | [Match Status Indicators](docs/feature-F3-4-match-status-indicators.md) | Visual match feedback |
+| **F3** | [Export Preview](docs/feature-F3-5-export-preview.md) | Pre-export confirmation |
+| **F3** | [Progress Tracker](docs/feature-F3-6-progress-tracker.md) | Real-time export monitoring |
+| **F3** | [Results Report](docs/feature-F3-7-results-report.md) | Export summary and statistics |
+
+### Additional Resources
+
+- [Export Views Visual Summary](docs/F3-2-export-views-visual-summary.md) - Visual guide for export workflows
+
 ## License
 
 MIT
