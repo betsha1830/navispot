@@ -71,6 +71,8 @@ export function Dashboard() {
   const [searchQuery, setSearchQuery] = useState('');
   const [showSuccess, setShowSuccess] = useState(false);
   const [checkedPlaylistIds, setCheckedPlaylistIds] = useState<Set<string>>(new Set());
+  const [playlistTracksCache, setPlaylistTracksCache] = useState<Map<string, Song[]>>(new Map());
+  const [loadingTracks, setLoadingTracks] = useState(false);
 
   const isExportingRef = useRef(false);
 
@@ -226,6 +228,58 @@ export function Dashboard() {
 
     setSelectedPlaylistsStats(selectedPlaylists);
   }, [selectedIds, playlists, likedSongsCount, isExporting]);
+
+  // Fetch tracks for checked playlists
+  useEffect(() => {
+    async function fetchTracks() {
+      if (!spotify.token) return;
+
+      const uncachedIds = Array.from(checkedPlaylistIds).filter(id => !playlistTracksCache.has(id));
+      if (uncachedIds.length === 0) return;
+
+      setLoadingTracks(true);
+
+      try {
+        spotifyClient.setToken(spotify.token);
+        const newCache = new Map(playlistTracksCache);
+
+        await Promise.all(
+          uncachedIds.map(async (id) => {
+            try {
+              let tracks;
+              if (id === LIKED_SONGS_ID) {
+                const savedTracks = await spotifyClient.getAllSavedTracks();
+                tracks = savedTracks.map(t => t.track);
+              } else {
+                const playlistTracks = await spotifyClient.getAllPlaylistTracks(id);
+                tracks = playlistTracks.map(t => t.track);
+              }
+
+              const songs: Song[] = tracks.map(track => ({
+                title: track.name,
+                album: track.album?.name || 'Unknown',
+                artist: track.artists?.map(a => a.name).join(', ') || 'Unknown',
+                duration: formatDuration(track.duration_ms),
+              }));
+
+              newCache.set(id, songs);
+            } catch (error) {
+              console.error(`Failed to fetch tracks for playlist ${id}:`, error);
+              newCache.set(id, []);
+            }
+          })
+        );
+
+        setPlaylistTracksCache(newCache);
+      } catch (error) {
+        console.error('Failed to fetch tracks:', error);
+      } finally {
+        setLoadingTracks(false);
+      }
+    }
+
+    fetchTracks();
+  }, [checkedPlaylistIds, spotify.token, playlistTracksCache]);
 
   const filteredItems = useMemo(() => {
     let result = [...tableItems];
@@ -614,21 +668,14 @@ export function Dashboard() {
   }, [selectedIds, likedSongsCount, playlists]);
 
   const playlistGroups: PlaylistGroup[] = useMemo(() => {
-    const groups: PlaylistGroup[] = [];
-
-    selectedPlaylistsStats
+    return selectedPlaylistsStats
       .filter((p) => checkedPlaylistIds.has(p.id))
-      .forEach((playlist) => {
-        // For now, create empty groups - will be populated during export
-        groups.push({
-          playlistId: playlist.id,
-          playlistName: playlist.name,
-          songs: [], // Will be populated with actual tracks
-        });
-      });
-
-    return groups;
-  }, [selectedPlaylistsStats, checkedPlaylistIds]);
+      .map((playlist) => ({
+        playlistId: playlist.id,
+        playlistName: playlist.name,
+        songs: playlistTracksCache.get(playlist.id) || [],
+      }));
+  }, [selectedPlaylistsStats, checkedPlaylistIds, playlistTracksCache]);
 
   const fixedExportButton = (
     <div className="fixed bottom-6 right-6 z-50">

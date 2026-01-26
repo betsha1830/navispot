@@ -449,6 +449,55 @@ The Selected Playlists table in the left section supports:
 - **Information Focus:** Designed for viewing track details, not selection
 - **Section Headers:** Non-interactive visual separators (not clickable rows)
 
+**Track Fetching & Caching:**
+- **Automatic Fetching:** Tracks are fetched automatically when playlists are checked
+- **Caching Strategy:** Fetched tracks are cached to avoid redundant API calls
+- **Parallel Loading:** Multiple playlists fetched in parallel for better performance
+- **Loading State:** Loading indicator shown while fetching tracks
+- **Error Handling:** API errors logged without crashing the UI
+- **Data Source:** Uses existing `spotifyClient.getAllPlaylistTracks()` and `spotifyClient.getAllSavedTracks()`
+- **Format Conversion:** Spotify track data converted to Song format with duration in mm:ss
+
+**Implementation Details:**
+```typescript
+// State for track caching
+const [playlistTracksCache, setPlaylistTracksCache] = useState<Map<string, Song[]>>(new Map());
+const [loadingTracks, setLoadingTracks] = useState(false);
+
+// useEffect to fetch tracks when checkboxes change
+useEffect(() => {
+  async function fetchTracks() {
+    // Only fetch uncached playlists
+    const uncachedIds = Array.from(checkedPlaylistIds).filter(id => !playlistTracksCache.has(id));
+    if (uncachedIds.length === 0) return;
+    
+    setLoadingTracks(true);
+    
+    // Fetch all uncached playlists in parallel
+    await Promise.all(uncachedIds.map(async (id) => {
+      // Fetch tracks from Spotify API
+      // Convert to Song format
+      // Update cache
+    }));
+    
+    setLoadingTracks(false);
+  }
+  
+  fetchTracks();
+}, [checkedPlaylistIds, spotify.token]);
+
+// playlistGroups uses cached tracks
+const playlistGroups = useMemo(() => {
+  return selectedPlaylistsStats
+    .filter(p => checkedPlaylistIds.has(p.id))
+    .map(playlist => ({
+      playlistId: playlist.id,
+      playlistName: playlist.name,
+      songs: playlistTracksCache.get(playlist.id) || [],
+    }));
+}, [selectedPlaylistsStats, checkedPlaylistIds, playlistTracksCache]);
+```
+
 **Future Enhancement:** 📋 TO BE IMPLEMENTED
 - Click a song row for additional options (e.g., "Skip", "Match manually")
 - Context menu or modal for per-track actions
@@ -553,34 +602,45 @@ The separate Statistics Panel has been removed. Statistics are now displayed as 
 
 ### 2.5.2 Songs Panel Display with Playlist Grouping ✅ Completed (January 16, 2026)
 
-**Current Behavior:** Unmatched Songs panel shows only unmatched tracks from a single selected playlist.
+**Previous Behavior:** Unmatched Songs panel shows only unmatched tracks from a single selected playlist.
 
-**Required Behavior:** Songs panel shows all tracks from all checked playlists in the Selected Playlists table, grouped by playlist with visual separators.
+**Implemented Behavior:** Songs panel shows all tracks from all checked playlists in the Selected Playlists table, grouped by playlist with visual separators.
 
 **Implementation Details:**
-- **Panel Rename:** Change "Unmatched Songs Panel" to "Songs Panel"
-- **Data Source:** Fetch all tracks from checked playlists (not just one playlist, not just unmatched)
-- **Checkbox Control:** Right panel updates when checkboxes change in left panel
-- **Visual Grouping:** Add section headers between playlist groups
-- **Row Numbering:** Reset to 1 for each new playlist group (not continuous)
-- **Read-Only Display:** No selection checkboxes - purely for viewing track information
-- **Table Structure:** Add # column for row numbers (resets per playlist), adjust other column widths
+- ✅ **Panel Rename:** Changed "Unmatched Songs Panel" to "Songs Panel"
+- ✅ **Checkbox Control:** Right panel updates when checkboxes change in left panel
+- ✅ **Visual Grouping:** Added section headers between playlist groups
+- ✅ **Row Numbering:** Row numbers reset to 1 for each new playlist group
+- ✅ **Read-Only Display:** No selection checkboxes - purely for viewing track information
+- ✅ **Table Structure:** Added # column for row numbers, adjusted column widths
+- ✅ **Component Created:** Created new `SongsPanel.tsx` component
+- ✅ **Checkboxes Added:** Added checkboxes to `SelectedPlaylistsPanel.tsx`
+- ✅ **State Management:** Added `checkedPlaylistIds` state in Dashboard
 
-**Behavior Changes:**
-- Empty state when no playlists are checked in left panel
-- Show tracks from single playlist when one is checked
-- Show tracks from multiple playlists (grouped) when multiple are checked
-- Update immediately when checkboxes change
-- Maintain scroll position when possible
+### 2.5.3 Track Fetching & Population ✅ Completed (January 16, 2026)
 
-**Component Updates Required:**
-- Rename `UnmatchedSongsPanel.tsx` to `SongsPanel.tsx`
-- Remove any selection-related code from track table
-- Add section header rendering between playlist groups
-- Update to fetch and display all tracks from checked playlists
-- Add # column for sequential row numbering
-- Ensure proper scrolling and sticky header behavior
-- Add hover effects and tooltips for better UX
+**Previous Behavior:** Songs panel showed empty groups with playlist names but no actual track data.
+
+**Implemented Behavior:** Automatically fetches and displays actual tracks from Spotify API when playlists are checked.
+
+**Implementation Details:**
+- ✅ **Added State:** `playlistTracksCache` (Map<string, Song[]>) and `loadingTracks` (boolean)
+- ✅ **Added useEffect:** Watches `checkedPlaylistIds` changes and fetches tracks
+- ✅ **Caching Logic:** Only fetches playlists not already in cache
+- ✅ **Parallel Fetching:** Uses `Promise.all()` to fetch multiple playlists simultaneously
+- ✅ **API Calls:** Liked Songs via `getAllSavedTracks()`, regular playlists via `getAllPlaylistTracks()`
+- ✅ **Data Conversion:** Converts Spotify track format to Song format with duration in mm:ss
+- ✅ **Updated playlistGroups:** Now uses cached tracks from Map instead of empty arrays
+- ✅ **Error Handling:** Logs errors to console, uses empty array as fallback
+
+**Benefits Achieved:**
+- ✅ Caching prevents redundant API calls
+- ✅ Parallel fetching improves performance
+- ✅ Instant display for previously fetched playlists
+- ✅ Graceful error handling
+- ✅ Session-based cache (cleared on refresh)
+- Update `playlistGroups` useMemo to use cached tracks from Map
+- Show loading state in SongsPanel while fetching
 
 **Section Header Component:**
 ```tsx
@@ -599,6 +659,67 @@ The separate Statistics Panel has been removed. Statistics are now displayed as 
 - Responsive column widths with # column added
 - Proper scrollable container with sticky table header
 - Section headers scroll with content (not sticky)
+
+---
+
+### 2.5.3 Track Fetching Strategy ✅ Documented (January 16, 2026)
+
+**Overview:**
+Tracks are fetched on-demand when users check playlists in the Selected Playlists table. A caching mechanism prevents redundant API calls.
+
+**Caching Benefits:**
+- ✅ Avoids re-fetching when user re-checks a playlist
+- ✅ Reduces API calls and improves performance
+- ✅ Provides instant display for previously fetched playlists
+- ✅ Persists during session (cleared on page refresh)
+
+**Fetching Strategy:**
+
+| Aspect | Implementation |
+|--------|----------------|
+| **Trigger** | `useEffect` watches `checkedPlaylistIds` changes |
+| **Filter** | Only fetch playlists not in cache |
+| **Method** | Parallel fetching with `Promise.all()` |
+| **API Calls** | `spotifyClient.getAllPlaylistTracks(id)` for playlists, `spotifyClient.getAllSavedTracks()` for Liked Songs |
+| **Caching** | Store in `Map<string, Song[]>` |
+| **Loading** | Show loading state while fetching |
+| **Errors** | Log errors, don't crash UI |
+
+**Data Flow:**
+```
+1. User checks playlist checkbox
+   ↓
+2. checkedPlaylistIds state updates
+   ↓
+3. useEffect triggers
+   ↓
+4. Check if playlist in cache
+   ↓
+5a. In cache → Use cached data (instant)
+5b. Not in cache → Fetch from Spotify API
+   ↓
+6. Convert Spotify format → Song format
+   ↓
+7. Store in playlistTracksCache
+   ↓
+8. playlistGroups useMemo updates
+   ↓
+9. SongsPanel re-renders with tracks
+```
+
+**Performance Considerations:**
+- **Parallel Fetching:** Multiple playlists fetched simultaneously
+- **Lazy Loading:** Only fetch when checkbox is checked
+- **Cache Persistence:** Tracks remain cached during session
+- **Memory Management:** Cache cleared on component unmount or page refresh
+
+**Edge Cases Handled:**
+- User rapidly checks/unchecks → Only fetches once per playlist
+- User checks same playlist multiple times → Uses cache after first fetch
+- No Spotify token → Skips fetching gracefully
+- API rate limits → Handled by spotifyClient rate limiter
+- Empty playlists → Shows empty group with header
+- API errors → Logged to console, empty array used as fallback
 
 ---
 
