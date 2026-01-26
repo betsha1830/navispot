@@ -405,7 +405,6 @@ The Selected Playlists table in the left section supports:
 - Empty state when no playlist selected
 - **No Track Selection:** Songs panel is read-only - only displays track information
 - **Display Only:** Users can view all tracks but cannot select individual tracks in this panel
-- Click a song row for additional options (e.g., "Skip", "Match manually")
 - **Visual Indicators:** Hover effects for better interactivity but no selection states
 
 **Display Features:**
@@ -414,6 +413,11 @@ The Selected Playlists table in the left section supports:
 - **Tooltips:** Full content displayed on hover for truncated text
 - **Responsive Scrolling:** Independent scrolling with sticky header
 - **Information Focus:** Designed for viewing track details, not selection
+
+**Future Enhancement:** 📋 TO BE IMPLEMENTED
+- Click a song row for additional options (e.g., "Skip", "Match manually")
+- Context menu or modal for per-track actions
+- Manual override for automatic matching behavior
 
 ### 2.6 Statistics Section ✅ Removed (January 12, 2026)
 
@@ -1241,6 +1245,13 @@ The dashboard revamp is functionally complete for the original requirements. Two
    - Currently: Selected Playlists table only shows playlist information
    - Required: Add Select All checkbox + individual track checkboxes to Selected Playlists table
    - Impact: Granular control over which tracks to export from each selected playlist
+
+4. **Remove Top Blue Progress Bar During Export** 📋 TO BE IMPLEMENTED
+   - Currently: A blue progress bar appears at the top of the screen during export
+   - Required: Remove this top-level progress bar component
+   - Reason: Progress is already displayed per-playlist in the Selected Playlists table with individual progress bars
+   - Impact: Cleaner UI, reduces visual clutter, maintains focus on per-playlist progress tracking
+   - Technical: Remove or hide the top progress bar component from the export layout
 
 #### Implementation Priority
 
