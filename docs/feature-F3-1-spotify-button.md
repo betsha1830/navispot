@@ -54,6 +54,15 @@ None - the component reads all state from the auth context.
 3. If authenticated, displays user profile and disconnect button
 4. If not authenticated, displays connect button with Spotify branding
 
+### Logout Flow
+When the Disconnect button is clicked:
+1. Sets `isLoggingOut` state to disable button and show loading text
+2. Calls `spotifyLogout()` from auth context which:
+   - Makes DELETE request to `/api/auth/spotify` to clear server-side cookies
+   - Removes Spotify tokens from localStorage
+   - Resets authentication state to unauthenticated
+3. On success or failure, clears `isLoggingOut` state to re-enable button
+
 ## Related Documentation
 
 - [Auth Context](../lib/auth/auth-context.tsx) - Authentication state management

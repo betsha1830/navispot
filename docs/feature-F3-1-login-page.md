@@ -32,8 +32,16 @@ Uses the `useAuth` hook:
 - `spotify.isAuthenticated` - Check if user is logged in
 - `spotify.user` - Display user information
 - `spotifyLogin()` - Initiate OAuth flow
-- `spotifyLogout()` - Clear tokens and disconnect
+- `spotifyLogout()` - Clear server cookies, localStorage tokens, and disconnect
 - `isLoading` - Handle initial loading state
+
+#### Logout Process
+When the user clicks the Disconnect button:
+1. Button shows "Disconnecting..." and becomes disabled
+2. Makes DELETE request to `/api/auth/spotify` to clear server-side cookies
+3. Removes Spotify tokens from localStorage
+4. Resets authentication state
+5. Returns to "Connect Spotify" button state
 
 ### 2. Navidrome Credentials Form
 

@@ -58,7 +58,7 @@ The context exposes a comprehensive API for authentication management:
 
 **Spotify Methods:**
 - `spotifyLogin()`: Initiates the Spotify OAuth flow by redirecting to the authorization endpoint
-- `spotifyLogout()`: Clears Spotify tokens from storage and state
+- `spotifyLogout()`: Calls DELETE /api/auth/spotify to clear server cookies, clears Spotify tokens from localStorage and state
 - `refreshSpotifyToken()`: Refreshes the access token using the refresh token (public method)
 - `refreshSpotifyTokenFromStorage()`: Internal helper that refreshes expired tokens during initial load (private)
 

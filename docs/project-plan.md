@@ -50,6 +50,7 @@ A Next.js web application that exports playlists from Spotify to Navidrome music
 ### Spotify API Routes
 ```
 GET  /api/auth/spotify          - Initiate OAuth flow
+DELETE /api/auth/spotify        - Clear Spotify auth cookies (logout)
 GET  /api/auth/callback         - Handle OAuth callback
 GET  /api/spotify/playlists     - List user playlists
 GET  /api/spotify/playlists/:id - Get playlist details
