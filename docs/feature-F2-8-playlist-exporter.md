@@ -98,8 +98,42 @@ export interface PlaylistExporterOptions {
   existingPlaylistId?: string;
   skipUnmatched?: boolean;
   onProgress?: ProgressCallback;
+  cachedData?: PlaylistExportData;
+  signal?: AbortSignal;
 }
 ```
+
+### Cancellation Support
+
+The playlist exporter supports cancellation through the `AbortSignal` option:
+
+```typescript
+const abortController = new AbortController();
+
+const result = await exporter.exportPlaylist(
+  'My Playlist',
+  matches,
+  {
+    mode: 'create',
+    signal: abortController.signal,
+    onProgress: (progress) => updateProgressUI(progress),
+  }
+);
+
+// Cancel the export
+abortController.abort();
+```
+
+When cancellation is triggered:
+- All ongoing network requests to Navidrome are aborted
+- The export operation throws an `AbortError`
+- The caller can catch this error and handle the cancellation appropriately
+
+**Key Points:**
+- The `signal` parameter is optional - if not provided, cancellation is disabled
+- Cancellation checks are performed before each network request
+- Partial exports are not committed to Navidrome when cancelled
+- Progress callbacks receive the cancellation signal and stop being called
 
 ## Usage Examples
 
@@ -348,6 +382,8 @@ The Playlist Exporter is in turn a dependency for:
 - Progress callbacks should be efficient to avoid slowing export
 - Network timeouts should be handled with retries
 - Rate limiting from Navidrome server should be respected
+- Cancellation support via AbortSignal allows immediate termination of long-running exports
+- Network requests are properly aborted when export is cancelled, preventing resource waste
 
 ## Error Handling
 
