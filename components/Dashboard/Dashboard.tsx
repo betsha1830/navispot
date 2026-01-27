@@ -10,6 +10,7 @@ import { PlaylistTable } from "@/components/Dashboard/PlaylistTable"
 import { ExportLayoutManager } from "@/components/Dashboard/ExportLayoutManager"
 
 import { ConfirmationPopup } from "@/components/Dashboard/ConfirmationPopup"
+import { CancelConfirmationDialog } from "@/components/Dashboard/CancelConfirmationDialog"
 import {
   SelectedPlaylistsPanel,
   SelectedPlaylist,
@@ -109,6 +110,7 @@ export function Dashboard() {
   const [searchQuery, setSearchQuery] = useState("")
   const [showSuccess, setShowSuccess] = useState(false)
   const [showCancel, setShowCancel] = useState(false)
+  const [showCancelConfirmation, setShowCancelConfirmation] = useState(false)
   const [checkedPlaylistIds, setCheckedPlaylistIds] = useState<Set<string>>(
     new Set(),
   )
@@ -1151,6 +1153,12 @@ export function Dashboard() {
   }
 
   const handleCancelExport = () => {
+    if (isExportingRef.current) {
+      setShowCancelConfirmation(true)
+    }
+  }
+
+  const handleConfirmCancel = () => {
     abortControllerRef.current?.abort()
     isExportingRef.current = false
     setIsExporting(false)
@@ -1163,6 +1171,11 @@ export function Dashboard() {
     setCurrentUnmatchedPlaylistId(null)
     setUnmatchedSongs([])
     setSongExportStatus(new Map())
+    setShowCancelConfirmation(false)
+  }
+
+  const handleCloseCancelConfirmation = () => {
+    setShowCancelConfirmation(false)
   }
 
   const handlePlaylistClick = (id: string) => {
@@ -1236,7 +1249,7 @@ export function Dashboard() {
             isExporting ? handleCancelExport : () => setShowConfirmation(true)
           }
           disabled={!isExporting && selectedIds.size === 0}
-          className={`rounded-lg px-4 py-2 text-sm font-medium shadow-lg transition-all hover:shadow-xl disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:shadow-lg ${
+          className={`rounded-lg px-4 py-2 text-sm font-medium shadow-lg transition-all hover:shadow-xl disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:shadow-lg hover:shadow-xl ${
             isExporting
               ? "bg-red-500 hover:bg-red-600 text-white"
               : "bg-blue-500 hover:bg-blue-600 text-white"
@@ -1411,13 +1424,18 @@ export function Dashboard() {
     <div>
       {successToast}
       {cancelToast}
+      <CancelConfirmationDialog
+        isOpen={showCancelConfirmation}
+        onClose={handleCloseCancelConfirmation}
+        onConfirm={handleConfirmCancel}
+      />
       <ConfirmationPopup
         isOpen={showConfirmation}
         onClose={() => setShowConfirmation(false)}
         onConfirm={handleStartExport}
         playlists={confirmationPlaylists}
       />
-
+      
       <ExportLayoutManager
         selectedPlaylistsSection={selectedPlaylistsSection}
         unmatchedSongsSection={songsSection}
