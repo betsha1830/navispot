@@ -15,33 +15,33 @@ export class SpotifyClient {
     return this.token;
   }
 
-  async getCurrentUser(): Promise<SpotifyUser> {
+  async getCurrentUser(signal?: AbortSignal): Promise<SpotifyUser> {
     await spotifyRateLimiter.acquire();
-    const response = await this.fetch('/me');
+    const response = await this.fetch('/me', signal);
     return response.json();
   }
 
-  async getPlaylists(limit: number = 50, offset: number = 0): Promise<SpotifyPlaylistsResponse> {
-    await spotifyRateLimiter.acquire();
-    const params = new URLSearchParams({ limit: limit.toString(), offset: offset.toString() });
-    const response = await this.fetch(`/me/playlists?${params.toString()}`);
-    return response.json();
-  }
-
-  async getPlaylistTracks(playlistId: string, limit: number = 100, offset: number = 0): Promise<SpotifyTracksResponse> {
+  async getPlaylists(limit: number = 50, offset: number = 0, signal?: AbortSignal): Promise<SpotifyPlaylistsResponse> {
     await spotifyRateLimiter.acquire();
     const params = new URLSearchParams({ limit: limit.toString(), offset: offset.toString() });
-    const response = await this.fetch(`/playlists/${playlistId}/tracks?${params.toString()}`);
+    const response = await this.fetch(`/me/playlists?${params.toString()}`, signal);
     return response.json();
   }
 
-  async getAllPlaylistTracks(playlistId: string): Promise<SpotifyPlaylistTrack[]> {
+  async getPlaylistTracks(playlistId: string, limit: number = 100, offset: number = 0, signal?: AbortSignal): Promise<SpotifyTracksResponse> {
+    await spotifyRateLimiter.acquire();
+    const params = new URLSearchParams({ limit: limit.toString(), offset: offset.toString() });
+    const response = await this.fetch(`/playlists/${playlistId}/tracks?${params.toString()}`, signal);
+    return response.json();
+  }
+
+  async getAllPlaylistTracks(playlistId: string, signal?: AbortSignal): Promise<SpotifyPlaylistTrack[]> {
     const allTracks: SpotifyPlaylistTrack[] = [];
     let offset = 0;
     const limit = 100;
 
     while (true) {
-      const response = await this.getPlaylistTracks(playlistId, limit, offset);
+      const response = await this.getPlaylistTracks(playlistId, limit, offset, signal);
       allTracks.push(...response.items);
 
       if (!response.next) break;
@@ -51,20 +51,20 @@ export class SpotifyClient {
     return allTracks;
   }
 
-  async getSavedTracks(limit: number = 50, offset: number = 0): Promise<SpotifySavedTracksResponse> {
+  async getSavedTracks(limit: number = 50, offset: number = 0, signal?: AbortSignal): Promise<SpotifySavedTracksResponse> {
     await spotifyRateLimiter.acquire();
     const params = new URLSearchParams({ limit: limit.toString(), offset: offset.toString() });
-    const response = await this.fetch(`/me/tracks?${params.toString()}`);
+    const response = await this.fetch(`/me/tracks?${params.toString()}`, signal);
     return response.json();
   }
 
-  async getAllSavedTracks(): Promise<SpotifySavedTrack[]> {
+  async getAllSavedTracks(signal?: AbortSignal): Promise<SpotifySavedTrack[]> {
     const allTracks: SpotifySavedTrack[] = [];
     let offset = 0;
     const limit = 50;
 
     while (true) {
-      const response = await this.getSavedTracks(limit, offset);
+      const response = await this.getSavedTracks(limit, offset, signal);
       allTracks.push(...response.items);
 
       if (!response.next) break;
@@ -74,20 +74,20 @@ export class SpotifyClient {
     return allTracks;
   }
 
-  async getSavedTracksCount(): Promise<number> {
+  async getSavedTracksCount(signal?: AbortSignal): Promise<number> {
     await spotifyRateLimiter.acquire();
-    const response = await this.fetch('/me/tracks?limit=1');
+    const response = await this.fetch('/me/tracks?limit=1', signal);
     const data: SpotifySavedTracksResponse = await response.json();
     return data.total;
   }
 
-  async getAllPlaylists(): Promise<SpotifyPlaylist[]> {
+  async getAllPlaylists(signal?: AbortSignal): Promise<SpotifyPlaylist[]> {
     const allPlaylists: SpotifyPlaylist[] = [];
     let offset = 0;
     const limit = 50;
 
     while (true) {
-      const response = await this.getPlaylists(limit, offset);
+      const response = await this.getPlaylists(limit, offset, signal);
       allPlaylists.push(...response.items);
 
       if (!response.next) break;
@@ -126,7 +126,7 @@ export class SpotifyClient {
     }
   }
 
-  private async fetch(endpoint: string, options: RequestInit = {}): Promise<Response> {
+  private async fetch(endpoint: string, signal?: AbortSignal, options: RequestInit = {}): Promise<Response> {
     if (!this.token) {
       throw new Error('No access token available');
     }
@@ -140,6 +140,7 @@ export class SpotifyClient {
 
     const response = await fetch(`${SPOTIFY_API_BASE}${endpoint}`, {
       ...options,
+      signal,
       headers: {
         Authorization: `Bearer ${this.token.accessToken}`,
         'Content-Type': 'application/json',
@@ -150,7 +151,7 @@ export class SpotifyClient {
     if (response.status === 401) {
       const refreshed = await this.refreshAccessToken();
       if (refreshed) {
-        return this.fetch(endpoint, options);
+        return this.fetch(endpoint, signal, options);
       }
     }
 

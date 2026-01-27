@@ -63,6 +63,7 @@ export interface PlaylistExporterOptions {
   skipUnmatched?: boolean;
   onProgress?: ProgressCallback;
   cachedData?: PlaylistExportData;
+  signal?: AbortSignal;
 }
 
 export interface PlaylistExporter {
@@ -92,6 +93,7 @@ export class DefaultPlaylistExporter implements PlaylistExporter {
     const mode = options.mode ?? 'create';
     const skipUnmatched = options.skipUnmatched ?? false;
     const onProgress = options.onProgress;
+    const { signal } = options;
 
     const errors: ExportError[] = [];
     let exported = 0;
@@ -99,9 +101,16 @@ export class DefaultPlaylistExporter implements PlaylistExporter {
     const failed = 0;
     let playlistId: string | undefined;
 
+    const checkAbort = () => {
+      if (signal?.aborted) {
+        throw new DOMException('Export was cancelled', 'AbortError');
+      }
+    };
+
     const matchedTracks = matches.filter((m) => m.status === 'matched' && m.navidromeSong);
 
     if (onProgress) {
+      checkAbort();
       await onProgress({
         current: 0,
         total: matchedTracks.length,
@@ -127,10 +136,11 @@ export class DefaultPlaylistExporter implements PlaylistExporter {
     }
 
     try {
+      checkAbort();
       switch (mode) {
         case 'create': {
           const songIds = matchedTracks.map((m) => m.navidromeSong!.id);
-          const createResult = await this.createPlaylist(playlistName, songIds);
+          const createResult = await this.createPlaylist(playlistName, songIds, signal);
           playlistId = createResult.id;
           exported = createResult.success ? songIds.length : 0;
           break;
@@ -140,7 +150,7 @@ export class DefaultPlaylistExporter implements PlaylistExporter {
             throw new Error('existingPlaylistId is required for append mode');
           }
           const songIds = matchedTracks.map((m) => m.navidromeSong!.id);
-          const result = await this.appendToPlaylist(options.existingPlaylistId, songIds);
+          const result = await this.appendToPlaylist(options.existingPlaylistId, songIds, signal);
           exported = result.success ? songIds.length : 0;
           playlistId = options.existingPlaylistId;
           break;
@@ -150,7 +160,7 @@ export class DefaultPlaylistExporter implements PlaylistExporter {
             throw new Error('existingPlaylistId is required for overwrite mode');
           }
           const songIds = matchedTracks.map((m) => m.navidromeSong!.id);
-          const result = await this.overwritePlaylist(options.existingPlaylistId, songIds);
+          const result = await this.overwritePlaylist(options.existingPlaylistId, songIds, signal);
           exported = result.success ? songIds.length : 0;
           playlistId = options.existingPlaylistId;
           break;
@@ -167,6 +177,7 @@ export class DefaultPlaylistExporter implements PlaylistExporter {
           const newMatches: TrackMatch[] = [];
 
           matches.forEach(match => {
+            checkAbort();
             const cachedStatus = options.cachedData?.tracks[match.spotifyTrack.id];
             if (match.status === 'matched' && match.navidromeSong && !cachedStatus) {
               newTrackIds.add(match.navidromeSong.id);
@@ -176,19 +187,22 @@ export class DefaultPlaylistExporter implements PlaylistExporter {
 
           const removedSpotifyTrackIds: string[] = [];
           cachedTrackIds.forEach(trackId => {
+            checkAbort();
             if (!currentSpotifyTrackIds.has(trackId)) {
               removedSpotifyTrackIds.push(trackId);
             }
           });
 
           if (newMatches.length > 0) {
+            checkAbort();
             const newSongIds = newMatches.map(m => m.navidromeSong!.id);
-            await this.navidromeClient.updatePlaylist(options.existingPlaylistId, newSongIds);
+            await this.navidromeClient.updatePlaylist(options.existingPlaylistId, newSongIds, undefined, signal);
           }
 
           if (removedSpotifyTrackIds.length > 0) {
             try {
-              const currentPlaylist = await this.navidromeClient.getPlaylist(options.existingPlaylistId);
+              checkAbort();
+              const currentPlaylist = await this.navidromeClient.getPlaylist(options.existingPlaylistId, signal);
               const trackToEntryId = new Map<string, number>();
               currentPlaylist.tracks.forEach((navSong, index) => {
                 const cachedTrack = options.cachedData ? Object.values(options.cachedData.tracks).find(
@@ -201,6 +215,7 @@ export class DefaultPlaylistExporter implements PlaylistExporter {
 
               const entryIdsToRemove: number[] = [];
               removedSpotifyTrackIds.forEach(trackId => {
+                checkAbort();
                 const entryId = trackToEntryId.get(trackId);
                 if (entryId !== undefined) {
                   entryIdsToRemove.push(entryId);
@@ -208,7 +223,7 @@ export class DefaultPlaylistExporter implements PlaylistExporter {
               });
 
               if (entryIdsToRemove.length > 0) {
-                await this.navidromeClient.updatePlaylist(options.existingPlaylistId, [], entryIdsToRemove);
+                await this.navidromeClient.updatePlaylist(options.existingPlaylistId, [], entryIdsToRemove, signal);
               }
             } catch (error) {
               console.warn('Failed to remove tracks from Navidrome playlist:', error);
@@ -217,6 +232,7 @@ export class DefaultPlaylistExporter implements PlaylistExporter {
 
           if (newMatches.length > 0 || removedSpotifyTrackIds.length > 0) {
             try {
+              checkAbort();
               const metadata = {
                 spotifyPlaylistId: options.cachedData.spotifyPlaylistId,
                 navidromePlaylistId: options.existingPlaylistId,
@@ -224,7 +240,7 @@ export class DefaultPlaylistExporter implements PlaylistExporter {
                 exportedAt: new Date().toISOString(),
                 trackCount: matches.length,
               };
-              await this.navidromeClient.updatePlaylistComment(options.existingPlaylistId, metadata);
+              await this.navidromeClient.updatePlaylistComment(options.existingPlaylistId, metadata, signal);
             } catch (error) {
               console.warn('Failed to update playlist comment:', error);
             }
@@ -237,6 +253,9 @@ export class DefaultPlaylistExporter implements PlaylistExporter {
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        throw error;
+      }
       errors.push({
         trackName: 'N/A',
         artistName: 'N/A',
@@ -248,6 +267,7 @@ export class DefaultPlaylistExporter implements PlaylistExporter {
     skipped = skipUnmatched ? unmatched.length : 0;
 
     if (onProgress) {
+      checkAbort();
       await onProgress({
         current: matchedTracks.length,
         total: matchedTracks.length,
@@ -274,23 +294,23 @@ export class DefaultPlaylistExporter implements PlaylistExporter {
     };
   }
 
-  async createPlaylist(name: string, songIds: string[]): Promise<{ id: string; success: boolean }> {
-    const result = await this.navidromeClient.createPlaylist(name, songIds);
+  async createPlaylist(name: string, songIds: string[], signal?: AbortSignal): Promise<{ id: string; success: boolean }> {
+    const result = await this.navidromeClient.createPlaylist(name, songIds, signal);
     return {
       id: result.id,
       success: result.success,
     };
   }
 
-  async appendToPlaylist(playlistId: string, songIds: string[]): Promise<{ success: boolean }> {
-    const result = await this.navidromeClient.updatePlaylist(playlistId, songIds);
+  async appendToPlaylist(playlistId: string, songIds: string[], signal?: AbortSignal): Promise<{ success: boolean }> {
+    const result = await this.navidromeClient.updatePlaylist(playlistId, songIds, undefined, signal);
     return {
       success: result.success,
     };
   }
 
-  async overwritePlaylist(playlistId: string, songIds: string[]): Promise<{ success: boolean }> {
-    const result = await this.navidromeClient.replacePlaylistSongs(playlistId, songIds);
+  async overwritePlaylist(playlistId: string, songIds: string[], signal?: AbortSignal): Promise<{ success: boolean }> {
+    const result = await this.navidromeClient.replacePlaylistSongs(playlistId, songIds, signal);
     return {
       success: result.success,
     };

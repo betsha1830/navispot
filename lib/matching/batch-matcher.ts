@@ -24,6 +24,7 @@ export interface BatchMatcherOptions {
   fuzzyThreshold?: number;
   maxSearchResults?: number;
   concurrency?: number;
+  signal?: AbortSignal;
 }
 
 export interface BatchMatchResult {
@@ -75,15 +76,16 @@ export class DefaultBatchMatcher implements BatchMatcher {
     onProgress?: ProgressCallback
   ): Promise<BatchMatchResult> {
     const startTime = Date.now();
+    const { signal, ...matcherOptions } = options;
 
     await this.spotifyClient.loadToken();
 
-    const tracks = await this.spotifyClient.getAllPlaylistTracks(playlistId);
+    const tracks = await this.spotifyClient.getAllPlaylistTracks(playlistId, signal);
     const playlistName = 'Playlist';
 
     const result = await this.matchTracks(
       tracks.map((t: SpotifyPlaylistTrack) => t.track),
-      options,
+      { ...matcherOptions, signal },
       onProgress
     );
 
@@ -104,22 +106,31 @@ export class DefaultBatchMatcher implements BatchMatcher {
     options: BatchMatcherOptions = {},
     onProgress?: ProgressCallback
   ): Promise<{ matches: TrackMatch[]; statistics: BatchMatchResult['statistics'] }> {
+    const { signal, ...matcherOptions } = options;
+    
     const orchestratorOptions: Partial<OrchestratorOptions> = {
-      enableISRC: options.enableISRC ?? defaultMatchingOptions.enableISRC,
-      enableFuzzy: options.enableFuzzy ?? defaultMatchingOptions.enableFuzzy,
-      enableStrict: options.enableStrict ?? defaultMatchingOptions.enableStrict,
-      fuzzyThreshold: options.fuzzyThreshold ?? defaultMatchingOptions.fuzzyThreshold,
-      maxSearchResults: options.maxSearchResults ?? defaultMatchingOptions.maxSearchResults,
+      enableISRC: matcherOptions.enableISRC ?? defaultMatchingOptions.enableISRC,
+      enableFuzzy: matcherOptions.enableFuzzy ?? defaultMatchingOptions.enableFuzzy,
+      enableStrict: matcherOptions.enableStrict ?? defaultMatchingOptions.enableStrict,
+      fuzzyThreshold: matcherOptions.fuzzyThreshold ?? defaultMatchingOptions.fuzzyThreshold,
+      maxSearchResults: matcherOptions.maxSearchResults ?? defaultMatchingOptions.maxSearchResults,
     };
 
     const matches: TrackMatch[] = [];
     const total = tracks.length;
-    const concurrency = options.concurrency ?? 1;
+    const concurrency = matcherOptions.concurrency ?? 1;
+
+    const checkAbort = () => {
+      if (signal?.aborted) {
+        throw new DOMException('Export was cancelled', 'AbortError');
+      }
+    };
 
     if (concurrency <= 1) {
       for (let i = 0; i < tracks.length; i++) {
+        checkAbort();
         const track = tracks[i];
-        const match = await matchTracks(this.navidromeClient, [track], orchestratorOptions);
+        const match = await matchTracks(this.navidromeClient, [track], orchestratorOptions, signal);
         matches.push(match[0]);
 
         // Calculate partial statistics
@@ -153,9 +164,10 @@ export class DefaultBatchMatcher implements BatchMatcher {
 
       let processed = 0;
       for (const chunk of chunks) {
+        checkAbort();
         const chunkResults = await Promise.all(
           chunk.map(async (track) => {
-            const result = await matchTracks(this.navidromeClient, [track], orchestratorOptions);
+            const result = await matchTracks(this.navidromeClient, [track], orchestratorOptions, signal);
             return result[0];
           })
         );
@@ -197,12 +209,14 @@ export class DefaultBatchMatcher implements BatchMatcher {
     options: BatchMatcherOptions = {},
     onProgress?: ProgressCallback
   ): Promise<{ matches: TrackMatch[]; statistics: BatchMatchResult['statistics']; newTracks: SpotifyTrack[]; cachedMatches: TrackMatch[] }> {
+    const { signal, ...matcherOptions } = options;
+    
     const orchestratorOptions: Partial<OrchestratorOptions> = {
-      enableISRC: options.enableISRC ?? defaultMatchingOptions.enableISRC,
-      enableFuzzy: options.enableFuzzy ?? defaultMatchingOptions.enableFuzzy,
-      enableStrict: options.enableStrict ?? defaultMatchingOptions.enableStrict,
-      fuzzyThreshold: options.fuzzyThreshold ?? defaultMatchingOptions.fuzzyThreshold,
-      maxSearchResults: options.maxSearchResults ?? defaultMatchingOptions.maxSearchResults,
+      enableISRC: matcherOptions.enableISRC ?? defaultMatchingOptions.enableISRC,
+      enableFuzzy: matcherOptions.enableFuzzy ?? defaultMatchingOptions.enableFuzzy,
+      enableStrict: matcherOptions.enableStrict ?? defaultMatchingOptions.enableStrict,
+      fuzzyThreshold: matcherOptions.fuzzyThreshold ?? defaultMatchingOptions.fuzzyThreshold,
+      maxSearchResults: matcherOptions.maxSearchResults ?? defaultMatchingOptions.maxSearchResults,
     };
 
     const tracksToMatch: SpotifyTrack[] = [];
@@ -217,14 +231,21 @@ export class DefaultBatchMatcher implements BatchMatcher {
       }
     });
 
-    const concurrency = options.concurrency ?? 1;
+    const concurrency = matcherOptions.concurrency ?? 1;
     let newMatches: TrackMatch[] = [];
+
+    const checkAbort = () => {
+      if (signal?.aborted) {
+        throw new DOMException('Export was cancelled', 'AbortError');
+      }
+    };
 
     if (tracksToMatch.length > 0) {
       if (concurrency <= 1) {
         for (let i = 0; i < tracksToMatch.length; i++) {
+          checkAbort();
           const track = tracksToMatch[i];
-          const match = await matchTracks(this.navidromeClient, [track], orchestratorOptions);
+          const match = await matchTracks(this.navidromeClient, [track], orchestratorOptions, signal);
           newMatches.push(match[0]);
         }
       } else {
@@ -234,9 +255,10 @@ export class DefaultBatchMatcher implements BatchMatcher {
         }
 
         for (const chunk of chunks) {
+          checkAbort();
           const chunkResults = await Promise.all(
             chunk.map(async (track) => {
-              const result = await matchTracks(this.navidromeClient, [track], orchestratorOptions);
+              const result = await matchTracks(this.navidromeClient, [track], orchestratorOptions, signal);
               return result[0];
             })
           );

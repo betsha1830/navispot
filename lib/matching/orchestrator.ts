@@ -51,7 +51,8 @@ export function convertNativeSongToNavidromeSong(nativeSong: NavidromeNativeSong
 export async function matchTrack(
   client: NavidromeApiClient,
   spotifyTrack: SpotifyTrack,
-  options: Partial<MatchingOrchestratorOptions> = {}
+  options: Partial<MatchingOrchestratorOptions> = {},
+  signal?: AbortSignal
 ): Promise<TrackMatch> {
   const opts: MatchingOrchestratorOptions = { ...defaultMatchingOptions, ...options };
   const strategyResults: MatchingStrategyResult[] = [];
@@ -61,7 +62,7 @@ export async function matchTrack(
   let candidates: NavidromeSong[] = [];
   let nativeCandidates: NavidromeNativeSong[] = [];
 
-  nativeCandidates = await client.searchByTitle(trackTitle, opts.maxSearchResults);
+  nativeCandidates = await client.searchByTitle(trackTitle, opts.maxSearchResults, signal);
   candidates = nativeCandidates.map(convertNativeSongToNavidromeSong);
 
   const spotifyDurationSec = spotifyTrack.duration_ms / 1000;
@@ -161,12 +162,16 @@ export async function matchTrack(
 export async function matchTracks(
   client: NavidromeApiClient,
   spotifyTracks: SpotifyTrack[],
-  options: Partial<MatchingOrchestratorOptions> = {}
+  options: Partial<MatchingOrchestratorOptions> = {},
+  signal?: AbortSignal
 ): Promise<TrackMatch[]> {
   const results: TrackMatch[] = [];
 
   for (const track of spotifyTracks) {
-    const match = await matchTrack(client, track, options);
+    if (signal?.aborted) {
+      throw new DOMException('Export was cancelled', 'AbortError');
+    }
+    const match = await matchTrack(client, track, options, signal);
     results.push(match);
   }
 

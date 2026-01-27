@@ -22,15 +22,23 @@ export class DefaultFavoritesExporter implements FavoritesExporter {
     const startTime = Date.now();
     const skipUnmatched = options.skipUnmatched ?? false;
     const onProgress = options.onProgress;
+    const { signal } = options;
 
     const errors: FavoritesExportError[] = [];
     let starred = 0;
     let failed = 0;
     let skipped = 0;
 
+    const checkAbort = () => {
+      if (signal?.aborted) {
+        throw new DOMException('Export was cancelled', 'AbortError');
+      }
+    };
+
     const matchedTracks = matches.filter((m) => m.status === 'matched' && m.navidromeSong);
 
     if (onProgress) {
+      checkAbort();
       await onProgress({
         current: 0,
         total: matchedTracks.length,
@@ -57,12 +65,14 @@ export class DefaultFavoritesExporter implements FavoritesExporter {
     }
 
     for (let i = 0; i < matchedTracks.length; i++) {
+      checkAbort();
       const match = matchedTracks[i];
       const songId = match.navidromeSong!.id;
       const trackName = match.spotifyTrack.name;
       const artistName = match.spotifyTrack.artists?.[0]?.name || 'Unknown';
 
       if (onProgress) {
+        checkAbort();
         await onProgress({
           current: i + 1,
           total: matchedTracks.length,
@@ -73,7 +83,7 @@ export class DefaultFavoritesExporter implements FavoritesExporter {
       }
 
       try {
-        const result = await this.starSong(songId);
+        const result = await this.starSong(songId, signal);
         if (result.success) {
           starred++;
         } else {
@@ -85,6 +95,9 @@ export class DefaultFavoritesExporter implements FavoritesExporter {
           });
         }
       } catch (error) {
+        if (error instanceof DOMException && error.name === 'AbortError') {
+          throw error;
+        }
         failed++;
         errors.push({
           trackName,
@@ -98,6 +111,7 @@ export class DefaultFavoritesExporter implements FavoritesExporter {
     skipped = skipUnmatched ? unmatched.length : 0;
 
     if (onProgress) {
+      checkAbort();
       await onProgress({
         current: matchedTracks.length,
         total: matchedTracks.length,
@@ -121,14 +135,14 @@ export class DefaultFavoritesExporter implements FavoritesExporter {
     };
   }
 
-  async starSong(songId: string): Promise<{ success: boolean }> {
-    const result = await this.navidromeClient.starSong(songId);
+  async starSong(songId: string, signal?: AbortSignal): Promise<{ success: boolean }> {
+    const result = await this.navidromeClient.starSong(songId, signal);
     return {
       success: result.success,
     };
   }
 
-  async starSongs(songIds: string[]): Promise<{ success: boolean; failedIds: string[] }> {
+  async starSongs(songIds: string[], signal?: AbortSignal): Promise<{ success: boolean; failedIds: string[] }> {
     if (songIds.length === 0) {
       return { success: true, failedIds: [] };
     }
@@ -137,7 +151,7 @@ export class DefaultFavoritesExporter implements FavoritesExporter {
 
     const results = await Promise.all(
       songIds.map(async (songId) => {
-        const result = await this.starSong(songId);
+        const result = await this.starSong(songId, signal);
         return { songId, success: result.success };
       })
     );

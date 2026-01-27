@@ -31,6 +31,7 @@ export interface FavoritesExportResult {
 export interface FavoritesExporterOptions {
   skipUnmatched?: boolean;
   onProgress?: ProgressCallback;
+  signal?: AbortSignal;
 }
 
 export interface FavoritesExporter {
@@ -38,6 +39,6 @@ export interface FavoritesExporter {
     matches: TrackMatch[],
     options?: FavoritesExporterOptions
   ): Promise<FavoritesExportResult>;
-  starSong(songId: string): Promise<{ success: boolean }>;
-  starSongs(songIds: string[]): Promise<{ success: boolean; failedIds: string[] }>;
+  starSong(songId: string, signal?: AbortSignal): Promise<{ success: boolean }>;
+  starSongs(songIds: string[], signal?: AbortSignal): Promise<{ success: boolean; failedIds: string[] }>;
 }

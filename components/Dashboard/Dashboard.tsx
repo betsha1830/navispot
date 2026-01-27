@@ -126,6 +126,7 @@ export function Dashboard() {
   >(new Map())
 
   const isExportingRef = useRef(false)
+  const abortControllerRef = useRef<AbortController | null>(null)
 
   useEffect(() => {
     async function fetchData() {
@@ -562,6 +563,10 @@ export function Dashboard() {
     setShowConfirmation(false)
     setError(null)
 
+    const abortController = new AbortController()
+    abortControllerRef.current = abortController
+    const signal = abortController.signal
+
     setSelectedPlaylistsStats(
       itemsToExport.map((item) => ({
         id: item.id,
@@ -628,11 +633,11 @@ export function Dashboard() {
         let useDifferentialMatching = false
 
         if ("isLikedSongs" in item && item.isLikedSongs) {
-          const savedTracks = await spotifyClient.getAllSavedTracks()
+          const savedTracks = await spotifyClient.getAllSavedTracks(signal)
           tracks = savedTracks.map((t) => t.track)
           isLikedSongs = true
         } else {
-          tracks = (await spotifyClient.getAllPlaylistTracks(item.id)).map(
+          tracks = (await spotifyClient.getAllPlaylistTracks(item.id, signal)).map(
             (t) => t.track,
           )
 
@@ -657,7 +662,7 @@ export function Dashboard() {
           const result = await batchMatcher.matchTracksDifferential(
             tracks,
             cachedData.tracks,
-            matcherOptions,
+            { ...matcherOptions, signal },
             async (batchProgress) => {
               progress = updateProgress(progress, {
                 phase: "matching",
@@ -716,7 +721,7 @@ export function Dashboard() {
           matches = (
             await batchMatcher.matchTracks(
               tracks,
-              matcherOptions,
+              { ...matcherOptions, signal },
               async (batchProgress) => {
                 progress = updateProgress(progress, {
                   phase: "matching",
@@ -907,6 +912,7 @@ export function Dashboard() {
         if (isLikedSongs) {
           const result = await favoritesExporter.exportFavorites(matches, {
             skipUnmatched: false,
+            signal,
             onProgress: async (exportProgress) => {
               progress = updateProgress(progress, {
                 phase:
@@ -979,6 +985,7 @@ export function Dashboard() {
             existingPlaylistId: cachedData?.navidromePlaylistId,
             skipUnmatched: false,
             cachedData: useDifferentialMatching ? cachedData : undefined,
+            signal,
             onProgress: async (exportProgress) => {
               progress = updateProgress(progress, {
                 phase:
@@ -1120,22 +1127,39 @@ export function Dashboard() {
       }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Export failed"
-      setError(errorMessage)
-      setProgressState({
-        phase: "error",
-        progress: { current: 0, total: 0, percent: 0 },
-        statistics: { matched: 0, unmatched: 0, exported: 0, failed: 0 },
-        error: errorMessage,
-      })
+      
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        setError("Export was cancelled")
+        setProgressState({
+          phase: "cancelled",
+          progress: { current: 0, total: 0, percent: 0 },
+          statistics: { matched: 0, unmatched: 0, exported: 0, failed: 0 },
+        })
+      } else {
+        setError(errorMessage)
+        setProgressState({
+          phase: "error",
+          progress: { current: 0, total: 0, percent: 0 },
+          statistics: { matched: 0, unmatched: 0, exported: 0, failed: 0 },
+          error: errorMessage,
+        })
+      }
+    } finally {
       isExportingRef.current = false
       setIsExporting(false)
+      abortControllerRef.current = null
     }
   }
 
   const handleCancelExport = () => {
+    abortControllerRef.current?.abort()
     isExportingRef.current = false
     setIsExporting(false)
-    setProgressState(null)
+    setProgressState({
+      phase: "cancelled",
+      progress: { current: 0, total: 0, percent: 0 },
+      statistics: { matched: 0, unmatched: 0, exported: 0, failed: 0 },
+    })
     setSelectedPlaylistsStats([])
     setCurrentUnmatchedPlaylistId(null)
     setUnmatchedSongs([])

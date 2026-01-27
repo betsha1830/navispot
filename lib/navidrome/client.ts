@@ -74,7 +74,7 @@ export class NavidromeApiClient {
     this._totalCount = 0;
   }
 
-  async login(username: string, password: string): Promise<{
+  async login(username: string, password: string, signal?: AbortSignal): Promise<{
     success: boolean;
     token?: string;
     clientId?: string;
@@ -89,6 +89,7 @@ export class NavidromeApiClient {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ username, password }),
+        signal,
       });
 
       if (!response.ok) {
@@ -140,7 +141,7 @@ export class NavidromeApiClient {
       : `${this.baseUrl}${endpoint}`;
   }
 
-  private async _makeNativeRequest<T>(endpoint: string, params: Record<string, string | number | undefined> = {}): Promise<T> {
+  private async _makeNativeRequest<T>(endpoint: string, params: Record<string, string | number | undefined> = {}, signal?: AbortSignal): Promise<T> {
     await this._ensureAuthenticated();
     
     const url = this._buildNativeUrl(endpoint, params);
@@ -153,6 +154,7 @@ export class NavidromeApiClient {
 
     const response = await fetch(url, {
       headers,
+      signal,
     });
 
     if (!response.ok) {
@@ -186,7 +188,7 @@ export class NavidromeApiClient {
     }
   }
 
-  async getPlaylists(): Promise<NavidromePlaylist[]> {
+  async getPlaylists(signal?: AbortSignal): Promise<NavidromePlaylist[]> {
     const allPlaylists: NavidromePlaylist[] = [];
     let start = 0;
     const limit = 50;
@@ -201,7 +203,7 @@ export class NavidromeApiClient {
 
       const response = await this._makeNativeRequest<{
         items: NavidromePlaylist[];
-      }>('/api/playlist', params);
+      }>('/api/playlist', params, signal);
 
       if (response.items && response.items.length > 0) {
         allPlaylists.push(...response.items.map(this._mapPlaylist));
@@ -217,16 +219,16 @@ export class NavidromeApiClient {
     return allPlaylists;
   }
 
-  async getPlaylist(playlistId: string): Promise<{
+  async getPlaylist(playlistId: string, signal?: AbortSignal): Promise<{
     playlist: NavidromePlaylist;
     tracks: NavidromeNativeSong[];
   }> {
-    const playlistResponse = await this._makeNativeRequest<NavidromePlaylist>(`/api/playlist/${playlistId}`);
+    const playlistResponse = await this._makeNativeRequest<NavidromePlaylist>(`/api/playlist/${playlistId}`, {}, signal);
     const playlist = this._mapPlaylist(playlistResponse);
 
     const tracksResponse = await this._makeNativeRequest<{
       items: NavidromeNativeSong[];
-    }>(`/api/playlist/${playlistId}/tracks`, { _start: 0, _end: 1000 });
+    }>(`/api/playlist/${playlistId}/tracks`, { _start: 0, _end: 1000 }, signal);
 
     return {
       playlist,
@@ -234,7 +236,7 @@ export class NavidromeApiClient {
     };
   }
 
-  async createPlaylist(name: string, songIds: string[]): Promise<{
+  async createPlaylist(name: string, songIds: string[], signal?: AbortSignal): Promise<{
     id: string;
     success: boolean;
   }> {
@@ -247,6 +249,7 @@ export class NavidromeApiClient {
           'x-nd-client-unique-id': `${this._ndClientId}`,
         },
         body: JSON.stringify({ name }),
+        signal,
       });
 
       if (!createResponse.ok) {
@@ -265,6 +268,7 @@ export class NavidromeApiClient {
             'x-nd-client-unique-id': `${this._ndClientId}`,
           },
           body: JSON.stringify({ ids: songIds }),
+          signal,
         });
       }
 
@@ -277,7 +281,8 @@ export class NavidromeApiClient {
   async updatePlaylist(
     playlistId: string,
     songIdsToAdd: string[],
-    songIdsToRemove?: number[]
+    songIdsToRemove?: number[],
+    signal?: AbortSignal
   ): Promise<{ success: boolean }> {
     try {
       if (songIdsToAdd.length > 0) {
@@ -289,6 +294,7 @@ export class NavidromeApiClient {
             'x-nd-client-unique-id': `${this._ndClientId}`,
           },
           body: JSON.stringify({ ids: songIdsToAdd }),
+          signal,
         });
       }
 
@@ -300,6 +306,7 @@ export class NavidromeApiClient {
             'x-nd-authorization': `Bearer ${this._ndToken}`,
             'x-nd-client-unique-id': `${this._ndClientId}`,
           },
+          signal,
         });
       }
 
@@ -309,19 +316,19 @@ export class NavidromeApiClient {
     }
   }
 
-  async replacePlaylistSongs(playlistId: string, newSongIds: string[]): Promise<{ success: boolean }> {
+  async replacePlaylistSongs(playlistId: string, newSongIds: string[], signal?: AbortSignal): Promise<{ success: boolean }> {
     try {
-      const playlistData = await this.getPlaylist(playlistId);
+      const playlistData = await this.getPlaylist(playlistId, signal);
       const entryIdsToRemove = playlistData.tracks.map((_, index) => index);
 
-      await this.updatePlaylist(playlistId, newSongIds, entryIdsToRemove);
+      await this.updatePlaylist(playlistId, newSongIds, entryIdsToRemove, signal);
       return { success: true };
     } catch {
       return { success: false };
     }
   }
 
-  async searchByQuery(query: string, options?: SearchOptions): Promise<NavidromeNativeSong[]> {
+  async searchByQuery(query: string, options?: SearchOptions, signal?: AbortSignal): Promise<NavidromeNativeSong[]> {
     const allSongs: NavidromeNativeSong[] = [];
     let start = options?._start || 0;
     const end = options?._end || 50;
@@ -349,7 +356,7 @@ export class NavidromeApiClient {
         params._order = options._order;
       }
 
-      const response = await this._makeNativeRequest<NavidromeSearchResponse | NavidromeNativeSong[]>('/api/song', params);
+      const response = await this._makeNativeRequest<NavidromeSearchResponse | NavidromeNativeSong[]>('/api/song', params, signal);
       
       let items: NavidromeNativeSong[] = [];
       if (Array.isArray(response)) {
@@ -376,26 +383,26 @@ export class NavidromeApiClient {
     return this.searchByQuery('', { artistId });
   }
 
-  async searchByTitle(title: string, limit?: number): Promise<NavidromeNativeSong[]> {
+  async searchByTitle(title: string, limit?: number, signal?: AbortSignal): Promise<NavidromeNativeSong[]> {
     const end = limit || 50;
-    
+
     const strippedTitle = stripTitleSuffix(title);
-    let songs = await this.searchByQuery('', { title: strippedTitle, _start: 0, _end: end });
-    
+    let songs = await this.searchByQuery('', { title: strippedTitle, _start: 0, _end: end }, signal);
+
     if (songs.length === 0 && title !== strippedTitle) {
-      songs = await this.searchByQuery('', { title, _start: 0, _end: end });
+      songs = await this.searchByQuery('', { title, _start: 0, _end: end }, signal);
     }
-    
+
     if (songs.length === 0 && title.includes('/')) {
       const parts = title.split('/').map(p => p.trim()).filter(p => p.length > 0);
       for (const part of parts) {
-        const partSongs = await this.searchByQuery('', { title: part, _start: 0, _end: end });
+        const partSongs = await this.searchByQuery('', { title: part, _start: 0, _end: end }, signal);
         if (partSongs.length > 0) {
           return partSongs;
         }
       }
     }
-    
+
     return songs;
   }
 
@@ -458,7 +465,7 @@ export class NavidromeApiClient {
    * @param songId - The ID of the song to star
    * @returns Promise resolving to an object with success status and optional error message
    */
-  async starSong(songId: string): Promise<{ success: boolean; error?: string }> {
+  async starSong(songId: string, signal?: AbortSignal): Promise<{ success: boolean; error?: string }> {
     try {
       await this._ensureAuthenticated();
       const url = `${this.baseUrl}/api/song/${songId}`;
@@ -470,6 +477,7 @@ export class NavidromeApiClient {
           'x-nd-client-unique-id': `${this._ndClientId}`,
         },
         body: JSON.stringify({ starred: true }),
+        signal,
       });
 
       if (!response.ok) {
@@ -555,7 +563,7 @@ export class NavidromeApiClient {
    * 
    * @returns Promise resolving to an array of starred NavidromeNativeSong objects
    */
-  async getStarredSongs(): Promise<NavidromeNativeSong[]> {
+  async getStarredSongs(signal?: AbortSignal): Promise<NavidromeNativeSong[]> {
     const allStarredSongs: NavidromeNativeSong[] = [];
     let start = 0;
     const limit = 50;
@@ -569,7 +577,7 @@ export class NavidromeApiClient {
         _order: 'DESC',
       };
 
-      const response = await this._makeNativeRequest<NavidromeSearchResponse | NavidromeNativeSong[]>('/api/song', params);
+      const response = await this._makeNativeRequest<NavidromeSearchResponse | NavidromeNativeSong[]>('/api/song', params, signal);
       
       let items: NavidromeNativeSong[] = [];
       if (Array.isArray(response)) {
@@ -609,7 +617,7 @@ export class NavidromeApiClient {
     }
   }
 
-  async updatePlaylistComment(playlistId: string, metadata: ExportMetadata): Promise<void> {
+  async updatePlaylistComment(playlistId: string, metadata: ExportMetadata, signal?: AbortSignal): Promise<void> {
     await this._ensureAuthenticated();
 
     const comment = JSON.stringify(metadata);
@@ -622,6 +630,7 @@ export class NavidromeApiClient {
         'x-nd-client-unique-id': `${this._ndClientId}`,
       },
       body: JSON.stringify({ comment }),
+      signal,
     });
 
     if (!response.ok) {
