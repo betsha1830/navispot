@@ -108,6 +108,7 @@ export function Dashboard() {
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc")
   const [searchQuery, setSearchQuery] = useState("")
   const [showSuccess, setShowSuccess] = useState(false)
+  const [showCancel, setShowCancel] = useState(false)
   const [checkedPlaylistIds, setCheckedPlaylistIds] = useState<Set<string>>(
     new Set(),
   )
@@ -1127,14 +1128,12 @@ export function Dashboard() {
       }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Export failed"
-      
+
       if (err instanceof DOMException && err.name === 'AbortError') {
-        setError("Export was cancelled")
-        setProgressState({
-          phase: "cancelled",
-          progress: { current: 0, total: 0, percent: 0 },
-          statistics: { matched: 0, unmatched: 0, exported: 0, failed: 0 },
-        })
+        setShowCancel(true)
+        setTimeout(() => {
+          setShowCancel(false)
+        }, 3000)
       } else {
         setError(errorMessage)
         setProgressState({
@@ -1367,9 +1366,51 @@ export function Dashboard() {
     </div>
   )
 
+  const cancelToast = showCancel && (
+    <div className="fixed top-4 right-4 z-50 animate-fade-in">
+      <div className="flex items-center gap-3 rounded-lg bg-yellow-500 px-4 py-3 text-white shadow-lg">
+        <svg
+          className="h-5 w-5"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M6 18L18 6M6 6l12 12"
+          />
+        </svg>
+        <span className="text-sm font-medium">
+          Export was cancelled
+        </span>
+        <button
+          onClick={() => setShowCancel(false)}
+          className="ml-2 text-white/80 hover:text-white"
+        >
+          <svg
+            className="h-4 w-4"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M6 18L18 6M6 6l12 12"
+            />
+          </svg>
+        </button>
+      </div>
+    </div>
+  )
+
   return (
     <div>
       {successToast}
+      {cancelToast}
       <ConfirmationPopup
         isOpen={showConfirmation}
         onClose={() => setShowConfirmation(false)}
