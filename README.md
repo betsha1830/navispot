@@ -155,11 +155,8 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 The project includes a production-ready `Dockerfile`. Build with bun for best performance:
 
 ```bash
-# Build with Docker
-docker build -t navispot-plist .
-
-# Run container
-docker run -p 3000:3000 --env-file .env.local navispot-plist
+# Deploy with docker compose
+docker compose up -d
 ```
 
 **Important deployment notes**:
