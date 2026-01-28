@@ -21,7 +21,6 @@ This project enables you to export your Spotify playlists to Navidrome, your sel
 - **Progress Tracking**: Real-time progress updates during export operations
 - **Export Preview**: Review matches before committing to export
 - **Batch Export**: Select multiple playlists for bulk export
-- **Track Match Statistics**: View match success rates before exporting
 
 ## How to use
 
