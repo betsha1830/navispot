@@ -204,11 +204,11 @@ export function Dashboard() {
 
     try {
       spotifyClient.setToken(spotify.token)
-      const fetchedPlaylists = await spotifyClient.getAllPlaylists()
+      const fetchedPlaylists = await spotifyClient.getAllPlaylists(undefined, true)
       setPlaylists(fetchedPlaylists)
 
       try {
-        const count = await spotifyClient.getSavedTracksCount()
+        const count = await spotifyClient.getSavedTracksCount(undefined, true)
         setLikedSongsCount(count)
       } catch {
         setLikedSongsCount(0)

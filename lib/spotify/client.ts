@@ -21,10 +21,13 @@ export class SpotifyClient {
     return response.json();
   }
 
-  async getPlaylists(limit: number = 50, offset: number = 0, signal?: AbortSignal): Promise<SpotifyPlaylistsResponse> {
+  async getPlaylists(limit: number = 50, offset: number = 0, signal?: AbortSignal, bypassCache: boolean = false): Promise<SpotifyPlaylistsResponse> {
     await spotifyRateLimiter.acquire();
     const params = new URLSearchParams({ limit: limit.toString(), offset: offset.toString() });
-    const response = await this.fetch(`/me/playlists?${params.toString()}`, signal);
+    if (bypassCache) {
+      params.append('_t', Date.now().toString());
+    }
+    const response = await this.fetch(`/me/playlists?${params.toString()}`, signal, {}, bypassCache);
     return response.json();
   }
 
@@ -51,10 +54,13 @@ export class SpotifyClient {
     return allTracks;
   }
 
-  async getSavedTracks(limit: number = 50, offset: number = 0, signal?: AbortSignal): Promise<SpotifySavedTracksResponse> {
+  async getSavedTracks(limit: number = 50, offset: number = 0, signal?: AbortSignal, bypassCache: boolean = false): Promise<SpotifySavedTracksResponse> {
     await spotifyRateLimiter.acquire();
     const params = new URLSearchParams({ limit: limit.toString(), offset: offset.toString() });
-    const response = await this.fetch(`/me/tracks?${params.toString()}`, signal);
+    if (bypassCache) {
+      params.append('_t', Date.now().toString());
+    }
+    const response = await this.fetch(`/me/tracks?${params.toString()}`, signal, {}, bypassCache);
     return response.json();
   }
 
@@ -74,20 +80,21 @@ export class SpotifyClient {
     return allTracks;
   }
 
-  async getSavedTracksCount(signal?: AbortSignal): Promise<number> {
+  async getSavedTracksCount(signal?: AbortSignal, bypassCache: boolean = false): Promise<number> {
     await spotifyRateLimiter.acquire();
-    const response = await this.fetch('/me/tracks?limit=1', signal);
+    const url = bypassCache ? `/me/tracks?limit=1&_t=${Date.now()}` : '/me/tracks?limit=1';
+    const response = await this.fetch(url, signal, {}, bypassCache);
     const data: SpotifySavedTracksResponse = await response.json();
     return data.total;
   }
 
-  async getAllPlaylists(signal?: AbortSignal): Promise<SpotifyPlaylist[]> {
+  async getAllPlaylists(signal?: AbortSignal, bypassCache: boolean = false): Promise<SpotifyPlaylist[]> {
     const allPlaylists: SpotifyPlaylist[] = [];
     let offset = 0;
     const limit = 50;
 
     while (true) {
-      const response = await this.getPlaylists(limit, offset, signal);
+      const response = await this.getPlaylists(limit, offset, signal, bypassCache);
       allPlaylists.push(...response.items);
 
       if (!response.next) break;
@@ -126,7 +133,7 @@ export class SpotifyClient {
     }
   }
 
-  private async fetch(endpoint: string, signal?: AbortSignal, options: RequestInit = {}): Promise<Response> {
+  private async fetch(endpoint: string, signal?: AbortSignal, options: RequestInit = {}, bypassCache: boolean = false): Promise<Response> {
     if (!this.token) {
       throw new Error('No access token available');
     }
@@ -144,6 +151,7 @@ export class SpotifyClient {
       headers: {
         Authorization: `Bearer ${this.token.accessToken}`,
         'Content-Type': 'application/json',
+        ...(bypassCache ? { 'Cache-Control': 'no-cache, no-store, max-age=0' } : {}),
         ...options.headers,
       },
     });
@@ -151,7 +159,7 @@ export class SpotifyClient {
     if (response.status === 401) {
       const refreshed = await this.refreshAccessToken();
       if (refreshed) {
-        return this.fetch(endpoint, signal, options);
+        return this.fetch(endpoint, signal, options, bypassCache);
       }
     }
 
