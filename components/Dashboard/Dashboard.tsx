@@ -205,18 +205,24 @@ export function Dashboard() {
     try {
       spotifyClient.setToken(spotify.token)
 
-      // Capture old snapshot IDs for comparison
+      // Capture old track counts AND snapshot IDs for comparison
+      const oldTrackCounts = new Map(
+        playlists.map(p => [p.id, p.tracks.total])
+      )
       const oldSnapshots = new Map(
         playlists.map(p => [p.id, p.snapshot_id])
       )
 
       const fetchedPlaylists = await spotifyClient.getAllPlaylists(undefined, true)
-      setPlaylists(fetchedPlaylists)
 
-      // Compare snapshot IDs and invalidate cache for changed playlists
+      // Compare both track counts AND snapshot IDs - playlist changed if either is different
       const changedPlaylistIds = fetchedPlaylists
         .filter(p => oldSnapshots.has(p.id))
-        .filter(p => oldSnapshots.get(p.id) !== p.snapshot_id)
+        .filter(p => {
+          const trackCountChanged = oldTrackCounts.get(p.id) !== p.tracks.total
+          const snapshotChanged = oldSnapshots.get(p.id) !== p.snapshot_id
+          return trackCountChanged || snapshotChanged
+        })
         .map(p => p.id)
 
       if (changedPlaylistIds.length > 0) {
@@ -226,6 +232,8 @@ export function Dashboard() {
           return newCache
         })
       }
+
+      setPlaylists(fetchedPlaylists)
 
       try {
         const count = await spotifyClient.getSavedTracksCount(undefined, true)
@@ -344,8 +352,9 @@ export function Dashboard() {
       exportStatus: "none",
     }
 
-    setTableItems([likedSongsItem, ...playlistItems])
-  }, [playlists, navidromePlaylists, selectedIds, trackExportCache, likedSongsCount])
+    const allItems = [likedSongsItem, ...playlistItems]
+    setTableItems(allItems)
+  }, [playlists, navidromePlaylists, selectedIds, likedSongsCount, trackExportCache])
 
   // Sync selectedIds with selectedPlaylistsStats for real-time population
   useEffect(() => {

@@ -735,6 +735,48 @@ This is the most reliable method to detect actual content changes without making
   - Dependencies include all relevant state: `playlists`, `navidromePlaylists`, `selectedIds`, `trackExportCache`, `likedSongsCount`
   - Guarantees consistent table state regardless of update order
 
+**Issue 5:** Spotify API server takes time to update data, causing stale responses even with cache-busting.
+
+**Fix:** Added dual-layer change detection using both snapshot ID and track count:
+- **Snapshot ID:** Detects tracks reordered, metadata changed
+- **Track Count:** Detects tracks added/removed
+- **Combined:** Playlist marked as changed if EITHER snapshot_id OR track count differs
+- **Redundant but safe:** Checking both ensures all content changes are caught, even if Spotify server is slow to update one
+
+**Why Track Count + Snapshot ID?**
+Spotify server may take time to update snapshot_id after content changes:
+- User adds/removes tracks → track count changes immediately
+- Snapshot ID might lag behind by several seconds
+- Only checking snapshot ID would miss immediate track count changes
+- Only checking track count would miss metadata changes that update snapshot ID
+- Checking BOTH ensures immediate detection of all changes regardless of server delay
+
+**Implementation:**
+```typescript
+// Capture both old track counts AND snapshot IDs
+const oldTrackCounts = new Map(playlists.map(p => [p.id, p.tracks.total]))
+const oldSnapshots = new Map(playlists.map(p => [p.id, p.snapshot_id]))
+
+// Compare both - playlist changed if EITHER is different
+const changedPlaylistIds = fetchedPlaylists
+  .filter(p => oldSnapshots.has(p.id))
+  .filter(p => {
+    const trackCountChanged = oldTrackCounts.get(p.id) !== p.tracks.total
+    const snapshotChanged = oldSnapshots.get(p.id) !== p.snapshot_id
+    return trackCountChanged || snapshotChanged
+  })
+  .map(p => p.id)
+
+// Invalidate cache for changed playlists
+if (changedPlaylistIds.length > 0) {
+  setPlaylistTracksCache(prev => {
+    const newCache = new Map(prev)
+    changedPlaylistIds.forEach(id => newCache.delete(id))
+    return newCache
+  })
+}
+```
+
 **Issue 1:** The refresh button was not being disabled during initial load.
 
 **Fix:** Added `loading` prop to PlaylistTable and updated the button's disabled condition to: `disabled={loading || isRefreshing || isExporting}`
