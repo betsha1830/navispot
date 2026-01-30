@@ -703,6 +703,24 @@ const handleRefreshPlaylists = async () => {
 - Browser treats each unique URL as a separate request, bypassing its cache
 - No custom headers are added to avoid CORS issues (Spotify API doesn't support Cache-Control header in requests)
 
+**Issue 3:** Song tracks were being refetched even when playlists hadn't changed, causing unnecessary API calls.
+
+**Fix:** Added smart refresh using snapshot ID comparison:
+- Before updating playlists, capture current `snapshot_id` values for all playlists
+- After refreshing playlists, compare old and new `snapshot_id` values
+- Remove changed playlists from `playlistTracksCache` to trigger automatic refetch
+- Only tracks for playlists with changed content are re-fetched from Spotify
+- Playlists with identical `snapshot_id` keep their cached tracks
+
+**Why Snapshot ID?**
+Spotify guarantees that `snapshot_id` changes whenever playlist content changes:
+- Tracks added → `snapshot_id` changes
+- Tracks removed → `snapshot_id` changes
+- Track order changed → `snapshot_id` changes
+- Metadata changed (playlist name, description) → `snapshot_id` does NOT change
+
+This is the most reliable method to detect actual content changes without making unnecessary API calls.
+
 ### Benefits
 
 ✅ **User Experience**
