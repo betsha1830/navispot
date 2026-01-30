@@ -270,7 +270,7 @@ export function Dashboard() {
   }, [spotify.isAuthenticated])
 
   useEffect(() => {
-    const items: PlaylistTableItem[] = playlists.map((playlist) => {
+    const playlistItems: PlaylistTableItem[] = playlists.map((playlist) => {
       let exportStatus: "none" | "exported" | "out-of-sync" = "none"
       let navidromePlaylistId: string | undefined
       let lastExportedAt: string | undefined
@@ -327,13 +327,11 @@ export function Dashboard() {
       }
     })
 
-    setTableItems(items)
-  }, [playlists, navidromePlaylists, selectedIds, trackExportCache])
-
-  useEffect(() => {
     if (isExportingRef.current) {
+      setTableItems(playlistItems)
       return
     }
+
     const likedSongsItem: PlaylistTableItem = {
       id: LIKED_SONGS_ID,
       name: "Liked Songs",
@@ -346,11 +344,8 @@ export function Dashboard() {
       exportStatus: "none",
     }
 
-    setTableItems((prev) => {
-      const withoutLiked = prev.filter((item) => !item.isLikedSongs)
-      return [likedSongsItem, ...withoutLiked]
-    })
-  }, [likedSongsCount, selectedIds])
+    setTableItems([likedSongsItem, ...playlistItems])
+  }, [playlists, navidromePlaylists, selectedIds, trackExportCache, likedSongsCount])
 
   // Sync selectedIds with selectedPlaylistsStats for real-time population
   useEffect(() => {
