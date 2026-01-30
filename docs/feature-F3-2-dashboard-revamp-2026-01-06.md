@@ -721,6 +721,56 @@ Spotify guarantees that `snapshot_id` changes whenever playlist content changes:
 
 This is the most reliable method to detect actual content changes without making unnecessary API calls.
 
+**Issue 4:** Table updates were inconsistent - sometimes the playlist list would update but other times it wouldn't, causing the table to show stale data.
+
+**Fix:** Combined two separate `useEffect` hooks into one to prevent race condition:
+- **Before:** Two effects independently updated `tableItems`
+  - Effect 1: Updated all playlist items based on `playlists`, `navidromePlaylists`, `selectedIds`, `trackExportCache`
+  - Effect 2: Updated only Liked Songs item based on `likedSongsCount`, `selectedIds`
+  - When `handleRefreshPlaylists` was called, it updated both `playlists` and `likedSongsCount`
+  - Both effects triggered simultaneously, causing race conditions
+  - Effect 2's `setTableItems((prev) => ...)` assumed it had current data, but Effect 1 might not have finished
+- **After:** Single effect computes all items (playlists + Liked Songs) and sets them atomically
+  - Combines both update logic into one effect
+  - Dependencies include all relevant state: `playlists`, `navidromePlaylists`, `selectedIds`, `trackExportCache`, `likedSongsCount`
+  - Guarantees consistent table state regardless of update order
+
+**Issue 1:** The refresh button was not being disabled during initial load.
+
+**Fix:** Added `loading` prop to PlaylistTable and updated the button's disabled condition to: `disabled={loading || isRefreshing || isExporting}`
+
+**Issue 2:** Browser was using cached responses when refreshing playlists, preventing users from seeing updated playlist data.
+
+**Fix:** Added cache-busting to prevent browser caching:
+- Modified `lib/spotify/client.ts` to accept `bypassCache` parameter
+- Added timestamp query parameter (`_t=${Date.now()}`) to request URLs
+- Updated `handleRefreshPlaylists` in Dashboard to pass `bypassCache: true` to Spotify API calls
+- This makes each request URL unique, forcing the browser to fetch fresh data
+
+**Implementation Details:**
+- `getPlaylists()`, `getSavedTracks()`, and `getSavedTracksCount()` now accept `bypassCache` parameter
+- When `bypassCache=true`, a unique timestamp is appended to the URL
+- Browser treats each unique URL as a separate request, bypassing its cache
+- No custom headers are added to avoid CORS issues (Spotify API doesn't support Cache-Control header in requests)
+
+**Issue 3:** Song tracks were being refetched even when playlists hadn't changed, causing unnecessary API calls.
+
+**Fix:** Added smart refresh using snapshot ID comparison:
+- Before updating playlists, capture current `snapshot_id` values for all playlists
+- After refreshing playlists, compare old and new `snapshot_id` values
+- Remove changed playlists from `playlistTracksCache` to trigger automatic refetch
+- Only tracks for playlists with changed content are re-fetched from Spotify
+- Playlists with identical `snapshot_id` keep their cached tracks
+
+**Why Snapshot ID?**
+Spotify guarantees that `snapshot_id` changes whenever playlist content changes:
+- Tracks added → `snapshot_id` changes
+- Tracks removed → `snapshot_id` changes
+- Track order changed → `snapshot_id` changes
+- Metadata changed (playlist name, description) → `snapshot_id` does NOT change
+
+This is the most reliable method to detect actual content changes without making unnecessary API calls.
+
 ### Benefits
 
 ✅ **User Experience**
