@@ -1,5 +1,6 @@
 import { SpotifyPlaylistsResponse, SpotifyTracksResponse, SpotifyUser, SpotifyToken, SpotifyPlaylist, SpotifyPlaylistTrack, SpotifySavedTracksResponse, SpotifySavedTrack } from '@/types';
-import { encryptToken, decryptToken, isTokenExpired } from './token-storage';
+import { isTokenExpired } from './token-storage';
+import { SPOTIFY_STORAGE_KEY } from '@/types/auth-context';
 import { spotifyRateLimiter } from './rate-limiter';
 
 const SPOTIFY_API_BASE = 'https://api.spotify.com/v1';
@@ -126,7 +127,15 @@ export class SpotifyClient {
       };
 
       this.setToken(newToken);
-      await this.persistToken(newToken);
+      
+      // Update shared storage for AuthContext
+      const stored = localStorage.getItem(SPOTIFY_STORAGE_KEY);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        parsed.token = newToken;
+        localStorage.setItem(SPOTIFY_STORAGE_KEY, JSON.stringify(parsed));
+      }
+      
       return newToken;
     } catch {
       return null;
@@ -134,6 +143,10 @@ export class SpotifyClient {
   }
 
   private async fetch(endpoint: string, signal?: AbortSignal, options: RequestInit = {}, bypassCache: boolean = false): Promise<Response> {
+    if (!this.token) {
+      this.token = this.loadTokenFromStorage();
+    }
+
     if (!this.token) {
       throw new Error('No access token available');
     }
@@ -165,28 +178,16 @@ export class SpotifyClient {
     return response;
   }
 
-  async persistToken(token: SpotifyToken): Promise<void> {
-    const encrypted = await encryptToken(token);
-    localStorage.setItem('spotify_token', encrypted);
-  }
-
-  async loadToken(): Promise<SpotifyToken | null> {
-    const encrypted = localStorage.getItem('spotify_token');
-    if (!encrypted) return null;
-
-    const token = await decryptToken(encrypted);
-    if (token && isTokenExpired(token)) {
-      const refreshed = await this.refreshAccessToken();
-      return refreshed;
-    }
-
-    this.token = token;
-    return token;
-  }
-
   clearToken(): void {
     this.token = null;
-    localStorage.removeItem('spotify_token');
+  }
+
+  private loadTokenFromStorage(): SpotifyToken | null {
+    const stored = localStorage.getItem(SPOTIFY_STORAGE_KEY);
+    if (!stored) return null;
+    
+    const parsed = JSON.parse(stored);
+    return parsed.token || null;
   }
 }
 

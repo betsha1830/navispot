@@ -77,9 +77,7 @@ export class DefaultBatchMatcher implements BatchMatcher {
   ): Promise<BatchMatchResult> {
     const startTime = Date.now();
     const { signal, ...matcherOptions } = options;
-
-    await this.spotifyClient.loadToken();
-
+    
     const tracks = await this.spotifyClient.getAllPlaylistTracks(playlistId, signal);
     const playlistName = 'Playlist';
 
