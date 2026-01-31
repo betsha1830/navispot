@@ -25,7 +25,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   const testNavidromeConnection = useCallback(async (credentials: NavidromeCredentials): Promise<boolean> => {
+    console.log('[testNavidromeConnection] Called with:', credentials);
+    console.log('[testNavidromeConnection] Current localStorage:', localStorage.getItem(NAVIDROME_STORAGE_KEY));
+    
     if (!credentials) {
+      console.log('[testNavidromeConnection] No credentials provided, disconnecting');
       setNavidrome((prev) => ({
         ...prev,
         isConnected: false,
@@ -46,6 +50,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const parsed = JSON.parse(storedAuth);
         storedToken = parsed.token ?? '';
         storedClientId = parsed.clientId ?? '';
+        console.log('[testNavidromeConnection] Stored token exists:', !!storedToken);
+        console.log('[testNavidromeConnection] Stored clientId exists:', !!storedClientId);
+      } else {
+        console.log('[testNavidromeConnection] No stored auth found');
       }
 
       const client = new NavidromeApiClient(
@@ -56,11 +64,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         storedClientId || undefined
       );
       
+      console.log('[testNavidromeConnection] Attempting to ping Navidrome...');
       await client.ping();
       const token = client.getToken();
       const clientId = client.getClientId();
       
+      console.log('[testNavidromeConnection] Ping successful, new token:', !!token);
+      console.log('[testNavidromeConnection] New clientId:', !!clientId);
+      
       if (token && clientId) {
+        console.log('[testNavidromeConnection] Saving to localStorage and updating state');
         localStorage.setItem(NAVIDROME_STORAGE_KEY, JSON.stringify({
           url: credentials.url,
           username: credentials.username,
@@ -77,9 +90,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           token,
           clientId,
         }));
+        console.log('[testNavidromeConnection] Success - Navidrome connected');
         return true;
       }
 
+      console.log('[testNavidromeConnection] Failed - no token/clientId returned');
       setNavidrome((prev) => ({
         ...prev,
         isConnected: false,
@@ -91,6 +106,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return false;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Connection test failed';
+      console.log('[testNavidromeConnection] Error:', errorMessage);
       setNavidrome((prev) => ({
         ...prev,
         isConnected: false,
@@ -136,44 +152,45 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const loadStoredAuth = useCallback(async () => {
+    console.log('[loadStoredAuth] Loading stored auth data...');
     try {
+      let spotifySuccess = false;
       const storedSpotify = localStorage.getItem(SPOTIFY_STORAGE_KEY);
       if (storedSpotify) {
         const parsed = JSON.parse(storedSpotify) as { token: SpotifyToken; user: SpotifyUser };
         if (parsed.token) {
           const isExpired = parsed.token.expiresAt <= Date.now();
           
+          console.log('[loadStoredAuth] Spotify token found, expired:', isExpired);
+          
           if (isExpired) {
+            console.log('[loadStoredAuth] Token expired, attempting refresh from storage');
             const refreshed = await refreshSpotifyTokenFromStorage(parsed.token, parsed.user);
             if (refreshed) {
-              return;
+              console.log('[loadStoredAuth] Token refreshed successfully from storage');
+              spotifySuccess = true;
+            } else {
+              console.log('[loadStoredAuth] Refresh failed, clearing token');
+              localStorage.removeItem(SPOTIFY_STORAGE_KEY);
             }
-            localStorage.removeItem(SPOTIFY_STORAGE_KEY);
           } else {
+            console.log('[loadStoredAuth] Token valid, setting Spotify state');
             setSpotify({
               isAuthenticated: true,
               token: parsed.token,
               user: parsed.user,
             });
+            spotifySuccess = true;
           }
         } else {
           localStorage.removeItem(SPOTIFY_STORAGE_KEY);
         }
-      }
-
-      const storedNavidrome = localStorage.getItem(NAVIDROME_STORAGE_KEY);
-      if (storedNavidrome) {
-        const parsed = JSON.parse(storedNavidrome);
-        setNavidrome((prev) => ({
-          ...prev,
-          credentials: { url: parsed.url, username: parsed.username, password: parsed.password },
-          token: parsed.token ?? null,
-          clientId: parsed.clientId ?? '',
-        }));
-        await testNavidromeConnection({ url: parsed.url, username: parsed.username, password: parsed.password });
+      } else {
+        console.log('[loadStoredAuth] No stored Spotify auth found');
       }
 
       if (!storedSpotify) {
+        console.log('[loadStoredAuth] Checking session cookie for Spotify auth...');
         const response = await fetch('/api/auth/session');
         const data = await response.json();
         
@@ -191,12 +208,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               token: data.token,
               user,
             });
+            spotifySuccess = true;
           }
         }
       }
+
+      const storedNavidrome = localStorage.getItem(NAVIDROME_STORAGE_KEY);
+      if (storedNavidrome) {
+        console.log('[loadStoredAuth] Navidrome auth found in storage');
+        const parsed = JSON.parse(storedNavidrome);
+        setNavidrome((prev) => ({
+          ...prev,
+          credentials: { url: parsed.url, username: parsed.username, password: parsed.password },
+          token: parsed.token ?? null,
+          clientId: parsed.clientId ?? '',
+        }));
+        console.log('[loadStoredAuth] Testing Navidrome connection...');
+        await testNavidromeConnection({ url: parsed.url, username: parsed.username, password: parsed.password });
+      } else {
+        console.log('[loadStoredAuth] No stored Navidrome auth found');
+      }
     } catch (error) {
-      console.error('Error loading stored auth:', error);
+      console.error('[loadStoredAuth] Error loading stored auth:', error);
     } finally {
+      console.log('[loadStoredAuth] Loading complete, isLoading = false');
       setIsLoading(false);
     }
   }, [testNavidromeConnection, refreshSpotifyTokenFromStorage]);
@@ -241,20 +276,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const refreshSpotifyToken = useCallback(async (): Promise<boolean> => {
+    console.log('[refreshSpotifyToken] Called');
     try {
       const stored = localStorage.getItem(SPOTIFY_STORAGE_KEY);
-      if (!stored) return false;
+      if (!stored) {
+        console.log('[refreshSpotifyToken] No stored Spotify auth found');
+        return false;
+      }
       
       const parsed = JSON.parse(stored) as { token: SpotifyToken };
-      if (!parsed.token?.refreshToken) return false;
+      if (!parsed.token?.refreshToken) {
+        console.log('[refreshSpotifyToken] No refresh token available');
+        return false;
+      }
 
+      console.log('[refreshSpotifyToken] Sending refresh request to /api/auth/refresh');
       const response = await fetch('/api/auth/refresh', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ refreshToken: parsed.token.refreshToken }),
       });
 
-      if (!response.ok) return false;
+      if (!response.ok) {
+        console.log('[refreshSpotifyToken] Refresh request failed:', response.status, response.statusText);
+        return false;
+      }
 
       const newToken = await response.json();
       const updatedToken: SpotifyToken = {
@@ -263,11 +309,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         expiresAt: Date.now() + newToken.expires_in * 1000,
       };
 
+      console.log('[refreshSpotifyToken] Token refreshed successfully, saving to localStorage');
       localStorage.setItem(SPOTIFY_STORAGE_KEY, JSON.stringify({ token: updatedToken, user: spotify.user }));
       setSpotify((prev) => ({ ...prev, token: updatedToken }));
+      console.log('[refreshSpotifyToken] Success - Spotify token updated');
       return true;
     } catch (error) {
-      console.error('Error refreshing Spotify token:', error);
+      console.error('[refreshSpotifyToken] Error:', error);
       return false;
     }
   }, [spotify.user]);
