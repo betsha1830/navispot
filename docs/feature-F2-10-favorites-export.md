@@ -184,20 +184,16 @@ Located in `lib/navidrome/client.ts`:
 
 ```typescript
 async starSong(songId: string): Promise<{ success: boolean; error?: string }> {
-  await this._ensureAuthenticated();
-  const url = `${this.baseUrl}/api/song/${songId}`;
-  const response = await fetch(url, {
-    method: 'PATCH',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-nd-authorization': `Bearer ${this._ndToken}`,
-      'x-nd-client-unique-id': `${this._ndClientId}`,
-    },
-    body: JSON.stringify({ starred: true }),
-  });
+  const url = this._buildSubsonicUrl('/rest/star', { id: songId });
+  const response = await fetch(url);
 
   if (!response.ok) {
     return { success: false, error: `HTTP error: ${response.status} ${response.statusText}` };
+  }
+
+  const data = await response.json();
+  if (data['subsonic-response']?.status === 'failed') {
+    return { success: false, error: data['subsonic-response']?.error?.message || 'Star operation failed' };
   }
 
   return { success: true };
@@ -212,27 +208,16 @@ async starSongs(songIds: string[]): Promise<{ success: boolean; error?: string }
     return { success: true };
   }
 
-  await this._ensureAuthenticated();
-  const results = await Promise.all(
-    songIds.map(async (songId) => {
-      const url = `${this.baseUrl}/api/song/${songId}`;
-      const response = await fetch(url, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-nd-authorization': `Bearer ${this._ndToken}`,
-          'x-nd-client-unique-id': `${this._ndClientId}`,
-        },
-        body: JSON.stringify({ starred: true }),
-      });
-      return response.ok;
-    })
-  );
+  const url = this._buildSubsonicUrl('/rest/star', { id: songIds.join(',') });
+  const response = await fetch(url);
 
-  const allSuccessful = results.every((result) => result);
-  if (!allSuccessful) {
-    const failedCount = results.filter((r) => !r).length;
-    return { success: false, error: `${failedCount} out of ${songIds.length} songs failed to star` };
+  if (!response.ok) {
+    return { success: false, error: `HTTP error: ${response.status} ${response.statusText}` };
+  }
+
+  const data = await response.json();
+  if (data['subsonic-response']?.status === 'failed') {
+    return { success: false, error: data['subsonic-response']?.error?.message || 'Star operation failed' };
   }
 
   return { success: true };
@@ -465,12 +450,14 @@ console.log(`Found ${starredSongs.length} starred songs`);
 | GET | `/v1/me/tracks?limit=1` | Get saved tracks count (single request) |
 | GET | `/v1/me/tracks` | Get user's saved tracks (paginated) |
 
-### Navidrome API
+### Navidrome Subsonic API
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| PATCH | `/api/song/{id}` | Star/unstar a song |
-| GET | `/api/song` | Get songs with starred filter |
+| GET | `/rest/star?id={id}` | Star a song |
+| GET | `/rest/star?id=id1,id2,id3` | Batch star multiple songs |
+| GET | `/rest/unstar?id={id}` | Unstar a song |
+| GET | `/api/song` | Get songs with starred filter (native API) |
 
 ## Dashboard Integration
 

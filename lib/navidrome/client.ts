@@ -141,6 +141,27 @@ export class NavidromeApiClient {
       : `${this.baseUrl}${endpoint}`;
   }
 
+  private _generateHexPassword(password: string): string {
+    return `enc:${Buffer.from(password, 'utf-8').toString('hex')}`;
+  }
+
+  private _buildSubsonicUrl(endpoint: string, params: Record<string, string | undefined> = {}): string {
+    const searchParams = new URLSearchParams();
+    searchParams.set('u', this.username);
+    searchParams.set('p', this._generateHexPassword(this.password));
+    searchParams.set('f', 'json');
+    searchParams.set('v', '1.8.0');
+    searchParams.set('c', 'navispot');
+
+    Object.entries(params).forEach(([key, value]) => {
+      if (value === undefined) return;
+      searchParams.set(key, value);
+    });
+
+    const queryString = searchParams.toString();
+    return `${this.baseUrl}${endpoint}?${queryString}`;
+  }
+
   private async _makeNativeRequest<T>(endpoint: string, params: Record<string, string | number | undefined> = {}, signal?: AbortSignal): Promise<T> {
     await this._ensureAuthenticated();
     
@@ -460,28 +481,23 @@ export class NavidromeApiClient {
 
   /**
    * Stars (favorites) a single song in Navidrome.
-   * Uses the Navidrome native API PATCH endpoint to update the song's starred status.
+   * Uses the Subsonic API GET endpoint to update the song's starred status.
    * 
    * @param songId - The ID of the song to star
    * @returns Promise resolving to an object with success status and optional error message
    */
   async starSong(songId: string, signal?: AbortSignal): Promise<{ success: boolean; error?: string }> {
     try {
-      await this._ensureAuthenticated();
-      const url = `${this.baseUrl}/api/song/${songId}`;
-      const response = await fetch(url, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-nd-authorization': `Bearer ${this._ndToken}`,
-          'x-nd-client-unique-id': `${this._ndClientId}`,
-        },
-        body: JSON.stringify({ starred: true }),
-        signal,
-      });
+      const url = this._buildSubsonicUrl('/rest/star', { id: songId });
+      const response = await fetch(url, { signal });
 
       if (!response.ok) {
         return { success: false, error: `HTTP error: ${response.status} ${response.statusText}` };
+      }
+
+      const data = await response.json();
+      if (data['subsonic-response']?.status === 'failed') {
+        return { success: false, error: data['subsonic-response']?.error?.message || 'Star operation failed' };
       }
 
       return { success: true };
@@ -496,27 +512,16 @@ export class NavidromeApiClient {
     }
 
     try {
-      await this._ensureAuthenticated();
-      const results = await Promise.all(
-        songIds.map(async (songId) => {
-          const url = `${this.baseUrl}/api/song/${songId}`;
-          const response = await fetch(url, {
-            method: 'PATCH',
-            headers: {
-              'Content-Type': 'application/json',
-              'x-nd-authorization': `Bearer ${this._ndToken}`,
-              'x-nd-client-unique-id': `${this._ndClientId}`,
-            },
-            body: JSON.stringify({ starred: true }),
-          });
-          return response.ok;
-        })
-      );
+      const url = this._buildSubsonicUrl('/rest/star', { id: songIds.join(',') });
+      const response = await fetch(url);
 
-      const allSuccessful = results.every((result) => result);
-      if (!allSuccessful) {
-        const failedCount = results.filter((r) => !r).length;
-        return { success: false, error: `${failedCount} out of ${songIds.length} songs failed to star` };
+      if (!response.ok) {
+        return { success: false, error: `HTTP error: ${response.status} ${response.statusText}` };
+      }
+
+      const data = await response.json();
+      if (data['subsonic-response']?.status === 'failed') {
+        return { success: false, error: data['subsonic-response']?.error?.message || 'Star operation failed' };
       }
 
       return { success: true };
@@ -527,27 +532,23 @@ export class NavidromeApiClient {
 
   /**
    * Unstars (removes from favorites) a single song in Navidrome.
-   * Uses the Navidrome native API PATCH endpoint to update the song's starred status.
+   * Uses the Subsonic API GET endpoint to update the song's starred status.
    * 
    * @param songId - The ID of the song to unstar
    * @returns Promise resolving to an object with success status and optional error message
    */
   async unstarSong(songId: string): Promise<{ success: boolean; error?: string }> {
     try {
-      await this._ensureAuthenticated();
-      const url = `${this.baseUrl}/api/song/${songId}`;
-      const response = await fetch(url, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-nd-authorization': `Bearer ${this._ndToken}`,
-          'x-nd-client-unique-id': `${this._ndClientId}`,
-        },
-        body: JSON.stringify({ starred: false }),
-      });
+      const url = this._buildSubsonicUrl('/rest/unstar', { id: songId });
+      const response = await fetch(url);
 
       if (!response.ok) {
         return { success: false, error: `HTTP error: ${response.status} ${response.statusText}` };
+      }
+
+      const data = await response.json();
+      if (data['subsonic-response']?.status === 'failed') {
+        return { success: false, error: data['subsonic-response']?.error?.message || 'Unstar operation failed' };
       }
 
       return { success: true };
