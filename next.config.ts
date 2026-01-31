@@ -20,6 +20,10 @@ const nextConfig: NextConfig = {
         protocol: "https",
         hostname: "mosaic.scdn.co",
       },
+      {
+        protocol: "https",
+        hostname: "platform-lookaside.fbsbx.com",
+      },
     ],
   },
 };
