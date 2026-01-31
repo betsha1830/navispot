@@ -1,272 +1,202 @@
+<p align="center">
+  <img src="public/navispot.png" alt="NaviSpot Logo" width="200">
+</p>
+
 # NaviSpot
 
-## Spotify to Navidrome Playlist Exporter
+> Export Spotify playlists to your self-hosted Navidrome music server
 
-A Next.js web application that exports playlists from Spotify to Navidrome music server with flexible matching strategies. Transfer your Spotify playlists to your self-hosted Navidrome music library with intelligent track matching.
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-## What the project is trying to achieve
+---
 
-This project enables you to export your Spotify playlists to Navidrome, your self-hosted music server. It bridges the gap between streaming services and personal music libraries by:
+## 📋 Table of Contents
 
-- **Exporting Spotify playlists** → Navidrome (one-way sync)
-- **Intelligent track matching** using multiple strategies
-- **Batch operations** for multiple playlists
-- **Flexible export options** (create new and append to existing)
+- [✨ Features](#-features)
+- [🚀 Quick Start](#-quick-start)
+- [🎯 How It Works](#-how-it-works)
+- [📸 Screenshots](#-screenshots)
+- [⚙️ Setup](#%EF%B8%8F-setup)
+- [📦 Deployment](#-deployment)
+- [💝 Donations](#-donations)
+- [🛠️ Tech Stack](#%EF%B8%8F-tech-stack)
+- [📚 Documentation](#-documentation)
+- [📝 License](#-license)
 
-## Features
+---
 
-- **Spotify Integration**: Connect to your Spotify account and browse your playlists
-- **Navidrome Support**: Export matched tracks to your self-hosted Navidrome server
-- **Multiple Matching Strategies**: ISRC matching, fuzzy matching, and strict title/artist matching
-- **Progress Tracking**: Real-time progress updates during export operations
-- **Export Preview**: Review matches before committing to export
-- **Batch Export**: Select multiple playlists for bulk export
+## ✨ Features
 
-## How to use
+- **🔗 Dual Integration** – Connect Spotify & Navidrome simultaneously
+- **🎯 Smart Matching** – ISRC, fuzzy, and strict matching strategies
+- **📊 Batch Export** – Export multiple playlists at once
+- **🔄 Differential Exporting** – Sync only new tracks (single browser session)
+- **📤 JSON Export** – Export unmatched tracks as JSON
+- **⚡ Real-time Progress** – Live export tracking with match statistics
+- **👁️ Export Preview** – Review matches before committing
 
-1. **Login to Spotify and Navidrome**:
-   - Click the "Connect Spotify" button to authenticate with your Spotify account
-   - Enter your Navidrome server URL, username, and password
+---
 
-2. **Select Playlists**:
-   - Browse your Spotify playlists in the dashboard
-   - Check the boxes next to playlists you want to export
-   - View playlist details in the table above: cover art, name, track count, owner, saves, and duration
+## 🚀 Quick Start
 
-3. **Start Exporting**:
-   - Click the "Export Playlist(s)" button in the fixed footer
-   - Review match statistics before confirming
-   - Watch real-time progress during export
-   - View final results with matched/unmatched track counts
+1. **Connect** – Login to Spotify and enter Navidrome credentials
+2. **Select** – Browse and check playlists to export
+3. **Export** – Review matches and start the transfer
 
-## Track Matching Process
+---
 
-The application uses multiple strategies to match Spotify tracks with songs in your Navidrome library:
+## 🎯 How It Works
 
-1. **ISRC Matching** (highest priority):
-   - Uses International Standard Recording Code when available
-   - Exact match based on unique identifier
-   - Most accurate when ISRC is present in both Spotify and Navidrome
+**Matching Strategy Chain:**
 
-2. **Fuzzy Matching** (configurable threshold):
-   - Uses Levenshtein distance for similarity scoring
-   - Configurable threshold (default 0.8 = 80% similarity)
-   - Handles minor differences in artist/title formatting
+1. **ISRC** → Exact match via unique recording code
+2. **Fuzzy** → Similarity matching (80% threshold)
+3. **Strict** → Normalized exact string match
 
-3. **Strict Matching** (fallback):
-   - Exact string matching after normalization
-   - Removes special characters and normalizes case
-   - Matches when artist and title exactly match
+Unmatched tracks can be exported as JSON for later addition to Navidrome.
 
-**Fallback Chain**: The system tries ISRC → Fuzzy → Strict → Skip in order, stopping at the first successful match.
+---
 
-## Screenshots
+## 📸 Screenshots
 
-### Login Page
-![Login Page](public/login-page.png)
+|              Login              |             Dashboard              |                    Export Progress                    |
+| :-----------------------------: | :--------------------------------: | :---------------------------------------------------: |
+| ![Login](public/login-page.png) | ![Dashboard](public/dashboard.png) | ![Progress](public/dashboard-exporting-playlists.png) |
+| Connect to Spotify & Navidrome  |    Browse and select playlists     |              Real-time progress tracking              |
 
-Connect to Spotify and enter Navidrome credentials.
+---
 
-### Main Dashboard View
-![Dashboard](public/dashboard.png)
+## ⚙️ Setup
 
-Complete dashboard interface showing all playlists and export controls.
+### Prerequisites
 
-### Dashboard with Playlist Selection
-![Dashboard with Selected Playlists](public/dashboard-with-selected-playlists.png)
+- Node.js 18.17+
+- Spotify Developer account
+- Running Navidrome instance
 
-Browse Spotify playlists, select multiple playlists for export, and view playlist details.
-
-### Dashboard Export Progress
-![Dashboard Exporting Playlists](public/dashboard-exporting-playlists.png)
-
-Real-time progress tracking during export with match statistics.
-
-## Prerequisites
-
-- Node.js 18.17 or later
-- A Spotify Developer account (free)
-- A running Navidrome instance (self-hosted)
-
-## Local Development Setup
-
-### 1. Clone the repository
+### Local Development
 
 ```bash
+# Clone & install
 git clone https://github.com/yourusername/navispot-plist.git
 cd navispot-plist
-```
-
-### 2. Install dependencies
-
-```bash
-npm install
-# or
 bun install
-```
 
-### 3. Configure environment variables
-
-Copy the example environment file and fill in your credentials:
-
-```bash
+# Configure
 cp .env.example .env.local
-```
+# Edit .env.local with your credentials
 
-Edit `.env.local` with your configuration:
-
-```env
-# Spotify Configuration
-SPOTIFY_CLIENT_ID=your_spotify_client_id
-SPOTIFY_CLIENT_SECRET=your_spotify_client_secret
-SPOTIFY_REDIRECT_URI=http://localhost:3000/api/auth/callback
-
-# Application URL
-NEXT_PUBLIC_APP_URL=http://localhost:3000
-```
-
-### 4. Set up Spotify Developer Dashboard
-
-1. Go to [Spotify Developer Dashboard](https://developer.spotify.com/dashboard)
-2. Create a new application
-3. Add `http://localhost:3000/api/auth/callback` to Redirect URIs
-4. Copy your Client ID and Client Secret to `.env.local`
-
-### 5. Run the development server
-
-**Recommended**: Use bun for faster builds and better performance:
-
-```bash
+# Run
 bun dev
 ```
 
-Or with npm:
+**Spotify Setup:**
+
+1. Create app at [Spotify Developer Dashboard](https://developer.spotify.com/dashboard)
+2. Add `http://localhost:3000/api/auth/callback` to Redirect URIs
+3. Copy Client ID & Secret to `.env.local`
+
+---
+
+## 📦 Deployment
+
+### Docker (Recommended)
 
 ```bash
-npm run dev
-```
-
-Open [http://localhost:3000](http://localhost:3000) in your browser.
-
-## How to deploy
-
-**Building recommendation**: Use bun for faster builds and better performance. The project includes `bun.lock` for dependency management.
-### Recommended: Deploy to a VPS with Docker
-
-The project includes a production-ready `Dockerfile`. Build with bun for best performance:
-
-```bash
-# Deploy with docker compose
 docker compose up -d
 ```
 
-**Important deployment notes**:
-- Copy `.env.example` to `.env.local` and populate all fields
-- When deploying locally, you can use `http://127.0.0.1:3000/api/auth/callback` as the redirect URI
-- For production, use your actual domain in the redirect URI
-
-### Production Environment Variables
-
-Update your environment variables for production:
+**Production Variables:**
 
 ```env
-SPOTIFY_REDIRECT_URI=https://your-production-domain.com/api/auth/callback
-NEXT_PUBLIC_APP_URL=https://your-production-domain.com
+SPOTIFY_REDIRECT_URI=https://your-domain.com/api/auth/callback
+NEXT_PUBLIC_APP_URL=https://your-domain.com
 ```
 
-Update your Spotify Developer Dashboard with the new production redirect URI.
+Update Spotify Dashboard with your production redirect URI.
 
-## Tech Stack
+---
 
-- **Framework**: Next.js 16 (App Router)
-- **Language**: TypeScript
-- **Styling**: Tailwind CSS
-- **API**: Spotify Web API, Navidrome API
-- **Matching**: Custom matching algorithms (ISRC, fuzzy, strict)
+## 💝 Donations
 
-## Project Structure
+If NaviSpot helps you migrate your music library, consider supporting development:
 
-```
-├── app/                          # Next.js App Router pages
-│   ├── api/                      # API routes for Spotify/Navidrome auth
-│   └── page.tsx                  # Main application page
-├── components/                   # React components
-│   ├── Dashboard/                # Main dashboard with playlist table
-│   ├── ExportPreview/            # Export confirmation dialog
-│   ├── FavoritesExport/          # Favorites/saved tracks export
-│   ├── ProgressTracker/          # Real-time progress display
-│   ├── ResultsReport/            # Export results summary
-│   └── ErrorBoundary/            # Global error handling
-├── lib/                          # Core utilities and clients
-│   ├── auth/                     # Authentication logic and context
-│   ├── matching/                 # Track matching algorithms
-│   ├── navidrome/                # Navidrome API client
-│   ├── spotify/                  # Spotify API client
-│   └── export/                   # Playlist export logic
-├── types/                        # TypeScript type definitions
-├── docs/                         # Feature documentation and plans
-├── hooks/                        # Custom React hooks
-├── public/                       # Static assets and screenshots
-```
+| Coin           | Address                                                                                           |
+| -------------- | ------------------------------------------------------------------------------------------------- |
+| **BTC**        | `bc1q8madmx95n2ve8e7xr38d2fyldafxjg25ffeuts`                                                      |
+| **ETH**        | `0xFee844879Bd716BE64580b8D2B8835ff76622671`                                                      |
+| **BCH**        | `qqep38q5t9fm3kxe96pek4cr49xz3u4exsq0x9t4xe`                                                      |
+| **TRX**        | `TM5evHNFfcy2WbrDbMpUMZdKotZw958WcG`                                                              |
+| **SOL**        | `9tXhy1xhs1MkXVonNkozwxwYHHwH4iifjrFakeY5wS55`                                                    |
+| **XNO (NANO)** | `nano_371m8ijecct9csm18eubojmfkf7rt1bxq4frs43bo5ybmsbpwxyywhqz9wh3`                               |
+| **POL**        | `0xFee844879Bd716BE64580b8D2B8835ff76622671`                                                      |
+| **LTC**        | `ltc1qaf5an5qultyw47xjees3d7uwnext2rszg93njj`                                                     |
+| **XMR**        | `84euv4YWNe4WGBm8hrPWKV8PSQpGvRzsFB9jyWhSCs45Z13mfU8qAyARaiqjc9CPCcSspyprd4Qv1KfbSVaHwxH9HRNmTjC` |
 
-## Documentation
+**[❤️ Support on Patreon](https://www.patreon.com/c/betsha)**
 
-Detailed documentation is available in the `docs/` directory.
+Your support helps maintain and improve this open-source project! 🙏
 
-### Feature Documentation
+---
 
-| Phase | Feature | Description |
-|-------|---------|-------------|
-| **F1** | [Project Setup](docs/feature-F1-1-project-setup.md) | Initial project configuration and tooling |
-| **F1** | [Spotify OAuth](docs/feature-F1-2-spotify-oauth.md) | Spotify authentication implementation |
-| **F1** | [Spotify API Client](docs/feature-F1-3-spotify-api-client.md) | Spotify Web API integration |
-| **F1** | [Navidrome API Client](docs/feature-F1-4-navidrome-api-client.md) | Navidrome Subsonic API integration |
-| **F1** | [Search Functionality](docs/feature-F1-5-search.md) | Search utilities for both APIs |
-| **F1** | [Auth Context](docs/feature-F1-6-auth-context.md) | Global authentication state management |
-| **F2** | [ISRC Matching](docs/feature-F2-1-isrc.md) | ISRC-based track matching algorithm |
-| **F2** | [Fuzzy Matching](docs/feature-F2-2-fuzzy-matching.md) | Fuzzy string matching algorithm |
-| **F2** | [Strict Matching](docs/feature-F2-3-strict-matching.md) | Exact string matching algorithm |
-| **F2** | [Matching Orchestrator](docs/feature-F2-4-matching-orchestrator.md) | Multi-strategy matching coordination |
-| **F2** | [Playlist Fetching](docs/feature-F2-5-playlist-fetching.md) | Spotify playlist retrieval |
-| **F2** | [Track Fetcher](docs/feature-F2-6-track-fetcher.md) | Track data retrieval with pagination |
-| **F2** | [Batch Matcher](docs/feature-F2-7-batch-matcher.md) | Bulk track matching operations |
-| **F2** | [Playlist Exporter](docs/feature-F2-8-playlist-exporter.md) | Navidrome playlist creation/update |
-| **F2** | [Saved Tracks](docs/feature-F2-9-saved-tracks.md) | Spotify saved tracks integration |
-| **F2** | [Favorites Export](docs/feature-F2-10-favorites-export.md) | Navidrome favorites synchronization |
-| **F3** | [Login Page](docs/feature-F3-1-login-page.md) | Authentication interface |
-| **F3** | [Spotify Connect Button](docs/feature-F3-1-spotify-button.md) | Spotify OAuth trigger component |
-| **F3** | [Navidrome Form](docs/feature-F3-1-navidrome-form.md) | Navidrome credentials input |
-| **F3** | [Dashboard](docs/feature-F3-2-dashboard.md) | Main playlist view and revamp details |
-| **F3** | [Playlist Detail View](docs/feature-F3-3-playlist-detail-view.md) | Track-by-track breakdown |
-| **F3** | [Match Status Indicators](docs/feature-F3-4-match-status-indicators.md) | Visual match feedback |
-| **F3** | [Export Preview](docs/feature-F3-5-export-preview.md) | Pre-export confirmation |
-| **F3** | [Progress Tracker](docs/feature-F3-6-progress-tracker.md) | Real-time export monitoring |
-| **F3** | [Results Report](docs/feature-F3-7-results-report.md) | Export summary and statistics |
+## 🐛 Bug Reports & Feature Requests
 
-### Additional Resources
+Found a bug or have a feature idea? We welcome your feedback!
 
-- [Export Views Visual Summary](docs/F3-2-export-views-visual-summary.md) - Visual guide for export workflows
+### Reporting Bugs 🐞
 
-## License
+Please [open an issue](../../issues/new?labels=bug) and include:
 
-MIT License - Open Source
+- **Error messages** (screenshots or console logs)
+- **Spotify account type** (Free or Premium)
+- **Navidrome setup** (Local or Remote server)
+- **Browser** you're using to access NaviSpot
+- **Steps to reproduce** the issue
+- **Expected vs actual behavior**
 
-Copyright (c) 2025 NaviSpot
+### Requesting Features ✨
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+Please [open an issue](../../issues/new?labels=enhancement) and include:
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+- **Feature description** – What you'd like to see
+- **Use case** – Why this would be helpful
+- **Any examples** from other apps (if applicable)
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+We appreciate detailed reports that help us improve NaviSpot for everyone!
+
+---
+
+## 🛠️ Tech Stack
+
+- **Framework:** Next.js 16 (App Router)
+- **Language:** TypeScript
+- **Styling:** Tailwind CSS
+- **APIs:** Spotify Web API, Navidrome Subsonic API
+
+---
+
+## 📚 Documentation
+
+Feature docs available in `docs/`:
+
+| Phase  | Features                                          |
+| ------ | ------------------------------------------------- |
+| **F1** | Setup, OAuth, API Clients, Auth                   |
+| **F2** | Matching (ISRC, Fuzzy, Strict), Export, Favorites |
+| **F3** | UI Components, Dashboard, Progress Tracking       |
+
+See [full feature index](docs/) for details.
+
+---
+
+## 📝 License
+
+MIT License – Open Source
+
+Copyright (c) 2026 NaviSpot
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
