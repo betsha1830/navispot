@@ -48,6 +48,10 @@ export function usePlaylistTable({
   const [filters, setFilters] = useState<TableState['filters']>({
     status: 'all',
     source: 'all',
+    owner: '',
+    visibility: 'all',
+    dateAfter: '',
+    dateBefore: '',
   });
   const [selectedIds, setSelectedIds] = useState<Set<string>>(loadInitialSelection);
 
