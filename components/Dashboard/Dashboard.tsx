@@ -112,6 +112,10 @@ export function Dashboard() {
   const [showSuccess, setShowSuccess] = useState(false)
   const [showCancel, setShowCancel] = useState(false)
   const [showCancelConfirmation, setShowCancelConfirmation] = useState(false)
+  const [ownerFilter, setOwnerFilter] = useState("")
+  const [visibilityFilter, setVisibilityFilter] = useState<"all" | "public" | "private">("all")
+  const [dateAfterFilter, setDateAfterFilter] = useState("")
+  const [dateBeforeFilter, setDateBeforeFilter] = useState("")
   const [checkedPlaylistIds, setCheckedPlaylistIds] = useState<Set<string>>(
     new Set(),
   )
@@ -128,6 +132,8 @@ export function Dashboard() {
   const [trackExportCache, setTrackExportCache] = useState<
     Map<string, PlaylistExportData>
   >(new Map())
+  const [playlistCreatedDates, setPlaylistCreatedDates] = useState<Map<string, string>>(new Map())
+  const [fetchingDates, setFetchingDates] = useState(false)
 
   const isExportingRef = useRef(false)
   const abortControllerRef = useRef<AbortController | null>(null)
@@ -332,6 +338,8 @@ export function Dashboard() {
         exportStatus,
         navidromePlaylistId,
         lastExportedAt,
+        public: playlist.public,
+        createdAt: playlistCreatedDates.get(playlist.id),
       }
     })
 
@@ -354,7 +362,43 @@ export function Dashboard() {
 
     const allItems = [likedSongsItem, ...playlistItems]
     setTableItems(allItems)
-  }, [playlists, navidromePlaylists, selectedIds, likedSongsCount, trackExportCache])
+  }, [playlists, navidromePlaylists, selectedIds, likedSongsCount, trackExportCache, playlistCreatedDates])
+
+  // Background fetch of playlist created dates (earliest added_at)
+  useEffect(() => {
+    if (!spotify.isAuthenticated || !spotify.token || playlists.length === 0) return
+
+    // Only fetch for playlists we don't already have dates for
+    const missingIds = playlists
+      .filter((p) => !playlistCreatedDates.has(p.id))
+      .map((p) => p.id)
+
+    if (missingIds.length === 0) return
+
+    let cancelled = false
+    setFetchingDates(true)
+
+    async function fetchDates() {
+      try {
+        spotifyClient.setToken(spotify.token!)
+        const dates = await spotifyClient.getPlaylistCreatedDates(missingIds)
+        if (!cancelled) {
+          setPlaylistCreatedDates((prev) => {
+            const next = new Map(prev)
+            dates.forEach((date, id) => next.set(id, date))
+            return next
+          })
+        }
+      } catch (err) {
+        console.warn("Failed to fetch playlist created dates:", err)
+      } finally {
+        if (!cancelled) setFetchingDates(false)
+      }
+    }
+
+    fetchDates()
+    return () => { cancelled = true }
+  }, [spotify.isAuthenticated, spotify.token, playlists])
 
   // Sync selectedIds with selectedPlaylistsStats for real-time population
   useEffect(() => {
@@ -515,6 +559,27 @@ export function Dashboard() {
     }
   }, [selectedIds, playlistTracksCache])
 
+  // Compute unique owners from all playlists for the filter dropdown
+  const uniqueOwners = useMemo(() => {
+    const owners = new Set<string>()
+    tableItems.forEach((item) => {
+      if (!item.isLikedSongs) {
+        owners.add(item.owner.display_name)
+      }
+    })
+    return Array.from(owners).sort((a, b) => a.localeCompare(b))
+  }, [tableItems])
+
+  // Track whether any filters are active (for clear-all button)
+  const hasActiveFilters = ownerFilter !== "" || visibilityFilter !== "all" || dateAfterFilter !== "" || dateBeforeFilter !== ""
+
+  const clearAllFilters = useCallback(() => {
+    setOwnerFilter("")
+    setVisibilityFilter("all")
+    setDateAfterFilter("")
+    setDateBeforeFilter("")
+  }, [])
+
   const filteredItems = useMemo(() => {
     let result = [...tableItems]
 
@@ -525,6 +590,42 @@ export function Dashboard() {
           item.name.toLowerCase().includes(query) ||
           item.owner.display_name.toLowerCase().includes(query),
       )
+    }
+
+    // Owner filter
+    if (ownerFilter) {
+      result = result.filter(
+        (item) => item.owner.display_name === ownerFilter,
+      )
+    }
+
+    // Visibility filter (public/private)
+    if (visibilityFilter !== "all") {
+      result = result.filter((item) => {
+        if (item.isLikedSongs) return visibilityFilter === "private"
+        if (visibilityFilter === "public") return item.public === true
+        if (visibilityFilter === "private") return item.public === false || item.public === null
+        return true
+      })
+    }
+
+    // Date filters (created date)
+    if (dateAfterFilter) {
+      const afterDate = new Date(dateAfterFilter)
+      result = result.filter((item) => {
+        if (!item.createdAt) return false
+        return new Date(item.createdAt) >= afterDate
+      })
+    }
+
+    if (dateBeforeFilter) {
+      const beforeDate = new Date(dateBeforeFilter)
+      // Set to end of day
+      beforeDate.setHours(23, 59, 59, 999)
+      result = result.filter((item) => {
+        if (!item.createdAt) return false
+        return new Date(item.createdAt) <= beforeDate
+      })
     }
 
     result.sort((a, b) => {
@@ -544,7 +645,7 @@ export function Dashboard() {
     })
 
     return result
-  }, [tableItems, searchQuery, sortColumn, sortDirection])
+  }, [tableItems, searchQuery, sortColumn, sortDirection, ownerFilter, visibilityFilter, dateAfterFilter, dateBeforeFilter])
 
   const handleSort = (column: "name" | "tracks" | "owner") => {
     if (sortColumn === column) {
@@ -1380,6 +1481,18 @@ export function Dashboard() {
       onRefresh={handleRefreshPlaylists}
       isRefreshing={refreshing}
       loading={loading}
+      ownerFilter={ownerFilter}
+      onOwnerFilterChange={setOwnerFilter}
+      visibilityFilter={visibilityFilter}
+      onVisibilityFilterChange={setVisibilityFilter}
+      dateAfterFilter={dateAfterFilter}
+      onDateAfterFilterChange={setDateAfterFilter}
+      dateBeforeFilter={dateBeforeFilter}
+      onDateBeforeFilterChange={setDateBeforeFilter}
+      uniqueOwners={uniqueOwners}
+      hasActiveFilters={hasActiveFilters}
+      onClearAllFilters={clearAllFilters}
+      fetchingDates={fetchingDates}
     />
   )
 

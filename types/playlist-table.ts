@@ -10,6 +10,8 @@ export interface PlaylistTableItem {
   exportStatus: 'none' | 'exported' | 'out-of-sync';
   navidromePlaylistId?: string;
   lastExportedAt?: string;
+  public?: boolean | null;
+  createdAt?: string;
 }
 
 export interface ExportMetadata {
@@ -27,6 +29,10 @@ export interface TableState {
   filters: {
     status: 'all' | 'selected' | 'not-selected' | 'exported' | 'not-exported';
     source: 'all' | 'liked-songs' | 'playlists';
+    owner: string;           // '' = all, or specific owner display_name
+    visibility: 'all' | 'public' | 'private';
+    dateAfter: string;       // ISO date string or '' for no filter
+    dateBefore: string;      // ISO date string or '' for no filter
   };
   selectedIds: Set<string>;
 }
