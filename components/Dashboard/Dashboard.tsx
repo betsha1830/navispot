@@ -175,6 +175,8 @@ export function Dashboard() {
           }
         }
       } catch (err) {
+        console.error('[Dashboard] fetchData error - STACK TRACE:')
+        console.error(err)
         setError(
           err instanceof Error ? err.message : "Failed to fetch playlists",
         )
@@ -263,6 +265,8 @@ export function Dashboard() {
         }
       }
     } catch (err) {
+      console.error('[Dashboard] handleRefreshPlaylists error - STACK TRACE:')
+      console.error(err)
       setError(
         err instanceof Error ? err.message : "Failed to refresh playlists",
       )
@@ -1209,6 +1213,8 @@ export function Dashboard() {
       }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Export failed"
+      console.error('[Dashboard] handleStartExport error - STACK TRACE:')
+      console.error(err)
 
       if (err instanceof DOMException && err.name === 'AbortError') {
         setShowCancel(true)
@@ -1216,6 +1222,7 @@ export function Dashboard() {
           setShowCancel(false)
         }, 3000)
       } else {
+        console.error('[Dashboard] Setting error in UI:', errorMessage)
         setError(errorMessage)
         setProgressState({
           phase: "error",
