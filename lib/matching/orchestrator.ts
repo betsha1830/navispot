@@ -57,7 +57,19 @@ export async function matchTrack(
   signal?: AbortSignal,
 ): Promise<TrackMatch> {
   if (!spotifyTrack || !spotifyTrack.name) {
-    throw new Error("Invalid Spotify track: track or track name is missing");
+    console.warn("Invalid Spotify track encountered:", {
+      track: spotifyTrack,
+      hasName: spotifyTrack?.name ? true : false,
+      id: spotifyTrack?.id,
+      artists: spotifyTrack?.artists,
+    });
+    return {
+      spotifyTrack: spotifyTrack || ({} as SpotifyTrack),
+      navidromeSong: undefined,
+      matchStrategy: "none",
+      matchScore: 0,
+      status: "unmatched",
+    };
   }
 
   const opts: MatchingOrchestratorOptions = {
@@ -188,8 +200,22 @@ export async function matchTracks(
     if (signal?.aborted) {
       throw new DOMException("Export was cancelled", "AbortError");
     }
-    const match = await matchTrack(client, track, options, signal);
-    results.push(match);
+    try {
+      const match = await matchTrack(client, track, options, signal);
+      results.push(match);
+    } catch (error) {
+      console.error("Error matching track:", {
+        track,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      results.push({
+        spotifyTrack: track,
+        navidromeSong: undefined,
+        matchStrategy: "none",
+        matchScore: 0,
+        status: "unmatched",
+      });
+    }
   }
 
   return results;
