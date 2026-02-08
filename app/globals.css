@@ -24,3 +24,47 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* Popover slide animations */
+.popover-enter {
+  animation: popoverFadeIn 0.2s ease-out forwards;
+}
+
+.popover-enter-below {
+  animation: popoverSlideFromTop 0.2s ease-out forwards;
+}
+
+.popover-enter-above {
+  animation: popoverSlideFromBottom 0.2s ease-out forwards;
+}
+
+@keyframes popoverFadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes popoverSlideFromTop {
+  0% {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes popoverSlideFromBottom {
+  0% {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

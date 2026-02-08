@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useRef, useEffect } from "react"
+import { createPortal } from "react-dom"
 import Image from "next/image"
 import {
   PlaylistTableItem,
@@ -145,8 +146,92 @@ export function PlaylistTable({
   datesLoadedCount = 0,
 }: PlaylistTableProps) {
   const [showFilters, setShowFilters] = useState(false)
+  const [popoverPosition, setPopoverPosition] = useState<"below" | "above">("below")
   const filterButtonRef = useRef<HTMLButtonElement>(null)
   const filterPanelRef = useRef<HTMLDivElement>(null)
+
+  // Calculate popover position based on viewport space
+  const [popoverStyle, setPopoverStyle] = useState<{ top: number; left: number; isReady: boolean }>({ top: 0, left: 0, isReady: false })
+  
+  useEffect(() => {
+    if (showFilters && filterButtonRef.current) {
+      const buttonRect = filterButtonRef.current.getBoundingClientRect()
+      const spaceBelow = window.innerHeight - buttonRect.bottom
+      const spaceAbove = buttonRect.top
+      const popoverHeight = Math.min(400, window.innerHeight * 0.7)
+      const popoverWidth = window.innerWidth < 640 ? 320 : 384 // w-80 or w-96
+
+      // Determine position (above or below)
+      let position: "above" | "below" = "below"
+      if (spaceBelow < popoverHeight && spaceAbove > spaceBelow) {
+        position = "above"
+        setPopoverPosition("above")
+      } else {
+        setPopoverPosition("below")
+      }
+
+      // Calculate vertical position
+      let top = position === "below"
+        ? buttonRect.bottom + 8
+        : buttonRect.top - popoverHeight - 8
+
+      // Ensure it doesn't go above viewport
+      if (top < 8) {
+        top = 8
+        // If we can't fit above, force below
+        if (position === "above") {
+          top = buttonRect.bottom + 8
+          setPopoverPosition("below")
+        }
+      }
+
+      // Calculate horizontal position (centered under the button)
+      const buttonCenter = buttonRect.left + (buttonRect.width / 2)
+      let left = buttonCenter - (popoverWidth / 2)
+
+      // Ensure it doesn't go off left edge
+      if (left < 8) {
+        left = 8
+      }
+      // Ensure it doesn't go off right edge
+      if (left + popoverWidth > window.innerWidth - 8) {
+        left = window.innerWidth - popoverWidth - 8
+      }
+
+      setPopoverStyle({ top, left, isReady: true })
+    }
+  }, [showFilters])
+
+  // Recalculate position on window resize
+  useEffect(() => {
+    function handleResize() {
+      if (showFilters && filterButtonRef.current) {
+        const buttonRect = filterButtonRef.current.getBoundingClientRect()
+        const popoverHeight = Math.min(400, window.innerHeight * 0.7)
+        const popoverWidth = window.innerWidth < 640 ? 320 : 384
+
+        let top = popoverPosition === "below"
+          ? buttonRect.bottom + 8
+          : buttonRect.top - popoverHeight - 8
+
+        if (top < 8) top = 8
+
+        // Center horizontally
+        const buttonCenter = buttonRect.left + (buttonRect.width / 2)
+        let left = buttonCenter - (popoverWidth / 2)
+
+        if (left < 8) left = 8
+        if (left + popoverWidth > window.innerWidth - 8) {
+          left = window.innerWidth - popoverWidth - 8
+        }
+
+        setPopoverStyle({ top, left, isReady: true })
+      }
+    }
+
+    window.addEventListener("resize", handleResize)
+    return () => window.removeEventListener("resize", handleResize)
+  }, [showFilters, popoverPosition])
 
   // Close filter panel when clicking outside
   useEffect(() => {
@@ -250,15 +335,19 @@ export function PlaylistTable({
               </svg>
             </button>
 
-            {/* Filter Popover */}
-            {showFilters && (
+            {/* Filter Popover Portal */}
+            {showFilters && popoverStyle.isReady && typeof document !== 'undefined' && createPortal(
               <div
                 ref={filterPanelRef}
-                className="absolute right-0 top-full mt-2 w-80 sm:w-96 z-50 animate-in fade-in slide-in-from-top-2 duration-200"
+                className={`fixed z-[9999] popover-enter ${popoverPosition === "below" ? "popover-enter-below" : "popover-enter-above"}`}
+                style={{
+                  top: `${popoverStyle.top}px`,
+                  left: `${popoverStyle.left}px`
+                }}
               >
-                <div className="p-4 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 shadow-xl shadow-zinc-200/50 dark:shadow-black/50">
+                <div className="flex flex-col max-h-[70vh] rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 shadow-xl shadow-zinc-200/50 dark:shadow-black/50 overflow-hidden">
                   {/* Header */}
-                  <div className="flex items-center justify-between mb-4 pb-3 border-b border-zinc-100 dark:border-zinc-800">
+                  <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-100 dark:border-zinc-800 flex-shrink-0">
                     <h3 className="text-sm font-semibold text-zinc-800 dark:text-zinc-100 flex items-center gap-2">
                       <svg className="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
@@ -275,8 +364,8 @@ export function PlaylistTable({
                     </button>
                   </div>
 
-                  {/* Filter Fields */}
-                  <div className="space-y-4">
+                  {/* Scrollable Filter Fields */}
+                  <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
                     {/* Owner Filter */}
                     <div className="space-y-1.5">
                       <label className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
@@ -379,7 +468,7 @@ export function PlaylistTable({
                   </div>
 
                   {/* Footer */}
-                  <div className="mt-4 pt-3 border-t border-zinc-100 dark:border-zinc-800 flex items-center justify-between">
+                  <div className="px-4 py-3 border-t border-zinc-100 dark:border-zinc-800 flex items-center justify-between flex-shrink-0 bg-zinc-50/50 dark:bg-zinc-800/50">
                     <span className="text-xs text-zinc-500">
                       {items.length} of {totalCount} playlists
                     </span>
@@ -401,7 +490,8 @@ export function PlaylistTable({
                     </div>
                   </div>
                 </div>
-              </div>
+              </div>,
+              document.body
             )}
           </div>
 
