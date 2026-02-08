@@ -1,13 +1,16 @@
-# Base image with Bun
-FROM oven/bun:1-alpine AS base
+# Base image
+FROM node:20-alpine AS base
+
+# Install pnpm
+RUN npm install -g pnpm
 
 # Install dependencies only when needed
 FROM base AS deps
 RUN apk add --no-cache libc6-compat
 WORKDIR /app
 
-COPY package.json bun.lock ./
-RUN bun install --frozen-lockfile
+COPY package.json pnpm-lock.yaml ./
+RUN pnpm install --frozen-lockfile
 
 # Rebuild the source code only when needed
 FROM base AS builder
@@ -18,7 +21,7 @@ COPY . .
 # Next.js collects completely anonymous telemetry data about general usage
 ENV NEXT_TELEMETRY_DISABLED=1
 
-RUN bun run build
+RUN pnpm run build
 
 # Production image, copy all the files and run next
 FROM base AS runner
