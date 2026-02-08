@@ -6,6 +6,7 @@
 
 > Export Spotify playlists to your self-hosted Navidrome music server
 
+[![Live Demo](https://img.shields.io/badge/Live%20Demo-navispot.gaga.pro.et-blue?style=flat&logo=vercel)](https://navispot.gaga.pro.et/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 ---
