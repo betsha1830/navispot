@@ -409,7 +409,7 @@ export function PlaylistTable({
 
   return (
     <div className="flex flex-col h-full min-h-0">
-      <div className="flex items-center justify-between gap-4 mb-3 flex-shrink-0">
+      <div className="flex items-center gap-4 mb-3 flex-shrink-0">
         <div className="relative flex-1 max-w-md">
           <input
             type="text"
@@ -443,7 +443,8 @@ export function PlaylistTable({
             </button>
           )}
         </div>
-        <div className="flex items-center gap-2 text-sm text-zinc-500 dark:text-zinc-400">
+
+        <div className="flex items-center gap-2 text-sm text-zinc-500 dark:text-zinc-400 flex-shrink-0">
           {/* Filter Toggle Button */}
           <div className="relative">
             <button
@@ -629,70 +630,66 @@ export function PlaylistTable({
             </svg>
           </button>
         </div>
-      </div>
 
-      {/* Active Filter Pills */}
-      {hasActiveFilters && (
-        <div className="flex flex-wrap items-center gap-2 mb-3 animate-in slide-in-from-top-1 duration-200">
-          <span className="text-xs text-zinc-500 dark:text-zinc-400 font-medium">Active:</span>
-          {ownerFilter && (
-            <button
-              onClick={() => onOwnerFilterChange("")}
-              className="group inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded-full hover:bg-blue-100 hover:border-blue-300 transition-all dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-800 dark:hover:bg-blue-900/50"
-            >
-              <svg className="w-3 h-3 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-              </svg>
-              Owner: {ownerFilter}
-              <svg className="w-3 h-3 text-blue-400 group-hover:text-blue-600 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-          )}
-          {visibilityFilter !== "all" && (
-            <button
-              onClick={() => onVisibilityFilterChange("all")}
-              className="group inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-purple-700 bg-purple-50 border border-purple-200 rounded-full hover:bg-purple-100 hover:border-purple-300 transition-all dark:bg-purple-900/30 dark:text-purple-300 dark:border-purple-800 dark:hover:bg-purple-900/50"
-            >
-              <svg className="w-3 h-3 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-              </svg>
-              {visibilityFilter === "public" ? "Public only" : "Private only"}
-              <svg className="w-3 h-3 text-purple-400 group-hover:text-purple-600 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-          )}
-          {(dateAfterFilter || dateBeforeFilter) && (
-            <button
-              onClick={() => {
-                onDateAfterFilterChange("")
-                onDateBeforeFilterChange("")
-              }}
-              className="group inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full hover:bg-emerald-100 hover:border-emerald-300 transition-all dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-800 dark:hover:bg-emerald-900/50"
-            >
-              <svg className="w-3 h-3 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-              </svg>
-              {dateAfterFilter && dateBeforeFilter 
-                ? `${formatDate(dateAfterFilter)} – ${formatDate(dateBeforeFilter)}`
-                : dateAfterFilter 
-                  ? `After ${formatDate(dateAfterFilter)}`
-                  : `Before ${formatDate(dateBeforeFilter)}`}
-              <svg className="w-3 h-3 text-emerald-400 group-hover:text-emerald-600 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-          )}
-          <button
-            onClick={onClearAllFilters}
-            className="text-xs text-red-500 hover:text-red-600 dark:text-red-400 dark:hover:text-red-300 font-medium px-2 py-1 rounded hover:bg-red-50 dark:hover:bg-red-900/20 transition-all"
-          >
-            Clear all
-          </button>
-        </div>
-      )}
+        {/* Active Filter Pills */}
+        {hasActiveFilters && (
+          <div className="hidden md:flex items-center gap-2 flex-nowrap">
+            <span className="text-xs text-zinc-500 dark:text-zinc-400 font-medium">Active:</span>
+            {ownerFilter && (
+              <button
+                onClick={() => onOwnerFilterChange("")}
+                className="group inline-flex items-center gap-1.5 px-2 py-1 text-xs font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded-full hover:bg-blue-100 hover:border-blue-300 transition-all dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-800 dark:hover:bg-blue-900/50"
+              >
+                <svg className="w-3 h-3 text-blue-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                </svg>
+                <span className="truncate max-w-[100px]">{ownerFilter}</span>
+                <svg className="w-3 h-3 text-blue-400 group-hover:text-blue-600 transition-colors flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            )}
+            {visibilityFilter !== "all" && (
+              <button
+                onClick={() => onVisibilityFilterChange("all")}
+                className="group inline-flex items-center gap-1.5 px-2 py-1 text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full hover:bg-emerald-100 hover:border-emerald-300 transition-all dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-800 dark:hover:bg-emerald-900/50"
+              >
+                <svg className="w-3 h-3 text-emerald-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                </svg>
+                <span>{visibilityFilter === "public" ? "Public" : "Private"}</span>
+                <svg className="w-3 h-3 text-emerald-400 group-hover:text-emerald-600 transition-colors flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            )}
+            {(dateAfterFilter || dateBeforeFilter) && (
+              <button
+                onClick={() => {
+                  onDateAfterFilterChange("")
+                  onDateBeforeFilterChange("")
+                }}
+                className="group inline-flex items-center gap-1.5 px-2 py-1 text-xs font-medium text-purple-700 bg-purple-50 border border-purple-200 rounded-full hover:bg-purple-100 hover:border-purple-300 transition-all dark:bg-purple-900/30 dark:text-purple-300 dark:border-purple-800 dark:hover:bg-purple-900/50"
+              >
+                <svg className="w-3 h-3 text-purple-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+                <span className="truncate max-w-[100px]">
+                  {dateAfterFilter && dateBeforeFilter 
+                    ? `${formatDate(dateAfterFilter)} – ${formatDate(dateBeforeFilter)}`
+                    : dateAfterFilter 
+                      ? `After ${formatDate(dateAfterFilter)}`
+                      : `Before ${formatDate(dateBeforeFilter)}`}
+                </span>
+                <svg className="w-3 h-3 text-purple-400 group-hover:text-purple-600 transition-colors flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            )}
+          </div>
+        )}
+      </div>
 
       {/* Table */}
       <div
