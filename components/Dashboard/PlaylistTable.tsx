@@ -1,14 +1,153 @@
 "use client"
 
-import { useState, useRef, useEffect } from "react"
+import { useState, useRef, useEffect, useMemo, memo, useCallback } from "react"
 import { createPortal } from "react-dom"
 import Image from "next/image"
+import { Calendar } from "@/components/ui/calendar"
 import {
   PlaylistTableItem,
   ExportStatus,
   getExportStatusBadgeColor,
   getExportStatusLabel,
 } from "@/types/playlist-table"
+
+// DatePicker component using shadcn Calendar with portal
+function DatePicker({
+  value,
+  onChange,
+  placeholder,
+  className,
+}: {
+  value: string
+  onChange: (date: string) => void
+  placeholder: string
+  className?: string
+}) {
+  const [isOpen, setIsOpen] = useState(false)
+  const [calendarPosition, setCalendarPosition] = useState({ top: 0, left: 0, ready: false })
+  const pickerRef = useRef<HTMLDivElement>(null)
+  const buttonRef = useRef<HTMLButtonElement>(null)
+
+  // Calculate calendar position when opening - centered above button
+  useEffect(() => {
+    if (isOpen && buttonRef.current) {
+      const rect = buttonRef.current.getBoundingClientRect()
+      const calendarWidth = 280
+      const calendarHeight = 280
+      const margin = 4
+      
+      // Center horizontally relative to button
+      const buttonCenter = rect.left + rect.width / 2
+      let left = buttonCenter - calendarWidth / 2
+      left = Math.max(margin, Math.min(left, window.innerWidth - calendarWidth - margin))
+      
+      // Check available space
+      const spaceAbove = rect.top
+      const spaceBelow = window.innerHeight - rect.bottom
+      
+      // Position: top center if space, otherwise bottom center
+      let top
+      if (spaceAbove >= calendarHeight + margin) {
+        top = rect.top - calendarHeight - margin
+      } else {
+        top = rect.bottom + margin
+      }
+      
+      setCalendarPosition({ top, left, ready: true })
+    } else if (!isOpen) {
+      setCalendarPosition(prev => ({ ...prev, ready: false }))
+    }
+  }, [isOpen])
+
+  // Close when clicking outside
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (
+        pickerRef.current && 
+        !pickerRef.current.contains(event.target as Node) &&
+        !(event.target as Element).closest('[data-calendar-portal]')
+      ) {
+        setIsOpen(false)
+      }
+    }
+    if (isOpen) {
+      document.addEventListener("mousedown", handleClickOutside)
+      return () => document.removeEventListener("mousedown", handleClickOutside)
+    }
+  }, [isOpen])
+
+  const date = value ? new Date(value) : undefined
+
+  const handleSelect = useCallback((selectedDate: Date | undefined) => {
+    if (selectedDate) {
+      onChange(selectedDate.toISOString().split("T")[0])
+    } else {
+      onChange("")
+    }
+    setIsOpen(false)
+  }, [onChange])
+
+  const clearDate = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    onChange("")
+  }
+
+  const calendarPortal = useMemo(() => {
+    if (!isOpen || !calendarPosition.ready) return null
+    return createPortal(
+      <div 
+        data-calendar-portal
+        className="fixed z-[99999] bg-white dark:bg-zinc-900 rounded-lg border border-zinc-200 dark:border-zinc-700 shadow-lg shadow-zinc-200/50 dark:shadow-black/50 p-2"
+        style={{
+          top: `${calendarPosition.top}px`,
+          left: `${calendarPosition.left}px`,
+          maxWidth: 'calc(100vw - 16px)',
+          maxHeight: 'calc(100vh - 16px)',
+          overflow: 'auto',
+          willChange: 'transform'
+        }}
+      >
+        <Calendar
+          mode="single"
+          selected={date}
+          onSelect={handleSelect}
+          className="rounded-md"
+        />
+      </div>,
+      document.body
+    )
+  }, [isOpen, calendarPosition.ready, calendarPosition.top, calendarPosition.left, date])
+
+  return (
+    <div ref={pickerRef} className={`relative ${className}`}>
+      <button
+        ref={buttonRef}
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full px-2 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs text-left text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 hover:border-zinc-300 dark:hover:border-zinc-500 transition-all flex items-center justify-between"
+      >
+        <span className={value ? "" : "text-zinc-400 dark:text-zinc-500"}>
+          {value ? new Date(value).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : placeholder}
+        </span>
+        {value ? (
+          <span
+            onClick={clearDate}
+            className="p-0.5 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
+          >
+            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </span>
+        ) : (
+          <svg className="w-3 h-3 text-zinc-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+          </svg>
+        )}
+      </button>
+
+      {calendarPortal}
+    </div>
+  )
+}
 
 interface PlaylistTableProps {
   items: PlaylistTableItem[]
@@ -240,7 +379,8 @@ export function PlaylistTable({
         filterPanelRef.current &&
         !filterPanelRef.current.contains(event.target as Node) &&
         filterButtonRef.current &&
-        !filterButtonRef.current.contains(event.target as Node)
+        !filterButtonRef.current.contains(event.target as Node) &&
+        !(event.target as Element).closest('[data-calendar-portal]')
       ) {
         setShowFilters(false)
       }
@@ -345,7 +485,7 @@ export function PlaylistTable({
                   left: `${popoverStyle.left}px`
                 }}
               >
-                <div className="flex flex-col max-h-[70vh] rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 shadow-xl shadow-zinc-200/50 dark:shadow-black/50 overflow-hidden">
+                <div className="flex flex-col max-h-[70vh] w-80 sm:w-96 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 shadow-xl shadow-zinc-200/50 dark:shadow-black/50 overflow-hidden">
                   {/* Header */}
                   <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-100 dark:border-zinc-800 flex-shrink-0">
                     <h3 className="text-sm font-semibold text-zinc-800 dark:text-zinc-100 flex items-center gap-2">
@@ -425,44 +565,16 @@ export function PlaylistTable({
                         )}
                       </label>
                       <div className="grid grid-cols-2 gap-2">
-                        <div className="relative">
-                          <input
-                            type="date"
-                            value={dateAfterFilter}
-                            onChange={(e) => onDateAfterFilterChange(e.target.value)}
-                            placeholder="From"
-                            className="w-full px-2 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
-                          />
-                          {dateAfterFilter && (
-                            <button
-                              onClick={() => onDateAfterFilterChange("")}
-                              className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 text-zinc-400 hover:text-zinc-600"
-                            >
-                              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                              </svg>
-                            </button>
-                          )}
-                        </div>
-                        <div className="relative">
-                          <input
-                            type="date"
-                            value={dateBeforeFilter}
-                            onChange={(e) => onDateBeforeFilterChange(e.target.value)}
-                            placeholder="To"
-                            className="w-full px-2 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
-                          />
-                          {dateBeforeFilter && (
-                            <button
-                              onClick={() => onDateBeforeFilterChange("")}
-                              className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 text-zinc-400 hover:text-zinc-600"
-                            >
-                              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                              </svg>
-                            </button>
-                          )}
-                        </div>
+                        <DatePicker
+                          value={dateAfterFilter}
+                          onChange={onDateAfterFilterChange}
+                          placeholder="From"
+                        />
+                        <DatePicker
+                          value={dateBeforeFilter}
+                          onChange={onDateBeforeFilterChange}
+                          placeholder="To"
+                        />
                       </div>
                     </div>
                   </div>
@@ -589,9 +701,9 @@ export function PlaylistTable({
         }`}
       >
         <div className="overflow-auto h-full">
-          <table className="w-full divide-y divide-zinc-200 dark:divide-zinc-700 table-fixed">
+          <table className="w-full divide-y divide-zinc-200 dark:divide-zinc-800 table-fixed">
             <thead className="sticky top-0 bg-white dark:bg-zinc-900 z-10">
-              <tr className="border-b border-zinc-200 dark:border-zinc-700">
+              <tr className="border-b border-zinc-200 dark:border-zinc-800">
                 <th className="px-3 py-3 text-left w-10">
                   <input
                     type="checkbox"
@@ -692,7 +804,7 @@ export function PlaylistTable({
                 </th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-zinc-200 dark:divide-zinc-700">
+            <tbody className="divide-y divide-zinc-200 dark:divide-zinc-800">
               {items.length === 0 ? (
                 <tr>
                   <td
