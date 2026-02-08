@@ -189,6 +189,18 @@ See [full feature index](docs/) for details.
 
 ---
 
+## 👥 Contributors
+
+We appreciate all contributions to NaviSpot! Special thanks to:
+
+| Contributor | Contribution | Date |
+|-------------|--------------|------|
+| **[WB2024](https://github.com/WB2024)** | Enhanced dashboard filtering: owner filter, visibility filter, and date range filtering with playlist creation date caching | Feb 2026 |
+
+Want to contribute? Check out our [issue tracker](../../issues) for ways to help!
+
+---
+
 ## 📝 License
 
 MIT License – Open Source

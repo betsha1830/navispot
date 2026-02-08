@@ -105,6 +105,73 @@ export class SpotifyClient {
     return allPlaylists;
   }
 
+  /**
+   * Fetches the earliest `added_at` date from a playlist's tracks.
+   * Uses the Spotify fields filter to minimize payload — only fetches added_at.
+   * Returns the earliest date as an ISO string, or undefined if no tracks.
+   */
+  async getPlaylistCreatedDate(playlistId: string, signal?: AbortSignal): Promise<string | undefined> {
+    await spotifyRateLimiter.acquire();
+    const fields = 'items(added_at),total,next';
+    let earliest: string | undefined;
+    let offset = 0;
+    const limit = 100;
+
+    // Fetch all pages to find the true earliest added_at
+    while (true) {
+      const params = new URLSearchParams({
+        fields,
+        limit: limit.toString(),
+        offset: offset.toString(),
+      });
+      const response = await this.fetch(`/playlists/${playlistId}/tracks?${params.toString()}`, signal);
+      const data = await response.json();
+
+      for (const item of data.items || []) {
+        if (item.added_at) {
+          if (!earliest || item.added_at < earliest) {
+            earliest = item.added_at;
+          }
+        }
+      }
+
+      if (!data.next) break;
+      offset += limit;
+    }
+
+    return earliest;
+  }
+
+  /**
+   * Fetches the created date (earliest added_at) for multiple playlists.
+   * Processes playlists sequentially to respect rate limits.
+   * Returns a Map of playlistId → earliest ISO date string.
+   */
+  async getPlaylistCreatedDates(
+    playlistIds: string[],
+    signal?: AbortSignal,
+    onProgress?: (completed: number, total: number) => void,
+  ): Promise<Map<string, string>> {
+    const result = new Map<string, string>();
+
+    for (let i = 0; i < playlistIds.length; i++) {
+      if (signal?.aborted) break;
+
+      try {
+        const createdDate = await this.getPlaylistCreatedDate(playlistIds[i], signal);
+        if (createdDate) {
+          result.set(playlistIds[i], createdDate);
+        }
+      } catch {
+        // Skip playlists that fail (e.g., deleted or access revoked)
+      }
+
+      onProgress?.(i + 1, playlistIds.length);
+    }
+
+    return result;
+  }
+
   async refreshAccessToken(): Promise<SpotifyToken | null> {
     if (!this.token?.refreshToken) return null;
 

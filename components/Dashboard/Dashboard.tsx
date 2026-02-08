@@ -112,6 +112,10 @@ export function Dashboard() {
   const [showSuccess, setShowSuccess] = useState(false)
   const [showCancel, setShowCancel] = useState(false)
   const [showCancelConfirmation, setShowCancelConfirmation] = useState(false)
+  const [ownerFilter, setOwnerFilter] = useState("")
+  const [visibilityFilter, setVisibilityFilter] = useState<"all" | "public" | "private">("all")
+  const [dateAfterFilter, setDateAfterFilter] = useState("")
+  const [dateBeforeFilter, setDateBeforeFilter] = useState("")
   const [checkedPlaylistIds, setCheckedPlaylistIds] = useState<Set<string>>(
     new Set(),
   )
@@ -128,6 +132,8 @@ export function Dashboard() {
   const [trackExportCache, setTrackExportCache] = useState<
     Map<string, PlaylistExportData>
   >(new Map())
+  const [playlistCreatedDates, setPlaylistCreatedDates] = useState<Map<string, string>>(new Map())
+  const [fetchingDates, setFetchingDates] = useState(false)
 
   const isExportingRef = useRef(false)
   const abortControllerRef = useRef<AbortController | null>(null)
@@ -332,6 +338,8 @@ export function Dashboard() {
         exportStatus,
         navidromePlaylistId,
         lastExportedAt,
+        public: playlist.public,
+        createdAt: playlistCreatedDates.get(playlist.id),
       }
     })
 
@@ -354,7 +362,97 @@ export function Dashboard() {
 
     const allItems = [likedSongsItem, ...playlistItems]
     setTableItems(allItems)
-  }, [playlists, navidromePlaylists, selectedIds, likedSongsCount, trackExportCache])
+  }, [playlists, navidromePlaylists, selectedIds, likedSongsCount, trackExportCache, playlistCreatedDates])
+
+  // Background fetch of playlist created dates (earliest added_at)
+  // Fetches progressively — updates state after each playlist for immediate UI feedback
+  // Caches dates in localStorage to avoid re-fetching on every page load
+  useEffect(() => {
+    if (!spotify.isAuthenticated || !spotify.token || playlists.length === 0) return
+
+    const CACHE_KEY = 'navispot-playlist-created-dates'
+    let cancelled = false
+
+    // Load cached dates from localStorage
+    function loadCachedDates(): Map<string, string> {
+      try {
+        const cached = localStorage.getItem(CACHE_KEY)
+        if (cached) {
+          const parsed = JSON.parse(cached) as Record<string, string>
+          return new Map(Object.entries(parsed))
+        }
+      } catch {
+        // Ignore parse errors
+      }
+      return new Map()
+    }
+
+    // Save dates to localStorage
+    function saveCachedDates(dates: Map<string, string>) {
+      try {
+        const obj: Record<string, string> = {}
+        dates.forEach((v, k) => { obj[k] = v })
+        localStorage.setItem(CACHE_KEY, JSON.stringify(obj))
+      } catch {
+        // Ignore storage errors
+      }
+    }
+
+    async function fetchDates() {
+      // First, load any cached dates
+      const cachedDates = loadCachedDates()
+      if (cachedDates.size > 0) {
+        setPlaylistCreatedDates(cachedDates)
+      }
+
+      // Find playlists that still need dates
+      const currentDates = cachedDates.size > 0 ? cachedDates : playlistCreatedDates
+      const missingIds = playlists
+        .filter((p) => !currentDates.has(p.id))
+        .map((p) => p.id)
+
+      if (missingIds.length === 0) return
+
+      setFetchingDates(true)
+      try {
+        spotifyClient.setToken(spotify.token!)
+
+        for (const playlistId of missingIds) {
+          if (cancelled) break
+
+          try {
+            const createdDate = await spotifyClient.getPlaylistCreatedDate(playlistId)
+            if (!cancelled && createdDate) {
+              setPlaylistCreatedDates((prev: Map<string, string>) => {
+                const next = new Map(prev)
+                next.set(playlistId, createdDate)
+                // Save to cache periodically (every 10 playlists)
+                if (next.size % 10 === 0) {
+                  saveCachedDates(next)
+                }
+                return next
+              })
+            }
+          } catch {
+            // Skip playlists that fail (e.g., deleted or access revoked)
+          }
+        }
+
+        // Final save to cache
+        setPlaylistCreatedDates((prev: Map<string, string>) => {
+          saveCachedDates(prev)
+          return prev
+        })
+      } catch (err) {
+        console.warn("Failed to fetch playlist created dates:", err)
+      } finally {
+        if (!cancelled) setFetchingDates(false)
+      }
+    }
+
+    fetchDates()
+    return () => { cancelled = true }
+  }, [spotify.isAuthenticated, spotify.token, playlists])
 
   // Sync selectedIds with selectedPlaylistsStats for real-time population
   useEffect(() => {
@@ -515,6 +613,27 @@ export function Dashboard() {
     }
   }, [selectedIds, playlistTracksCache])
 
+  // Compute unique owners from all playlists for the filter dropdown
+  const uniqueOwners = useMemo(() => {
+    const owners = new Set<string>()
+    tableItems.forEach((item) => {
+      if (!item.isLikedSongs) {
+        owners.add(item.owner.display_name)
+      }
+    })
+    return Array.from(owners).sort((a, b) => a.localeCompare(b))
+  }, [tableItems])
+
+  // Track whether any filters are active (for clear-all button)
+  const hasActiveFilters = ownerFilter !== "" || visibilityFilter !== "all" || dateAfterFilter !== "" || dateBeforeFilter !== ""
+
+  const clearAllFilters = useCallback(() => {
+    setOwnerFilter("")
+    setVisibilityFilter("all")
+    setDateAfterFilter("")
+    setDateBeforeFilter("")
+  }, [])
+
   const filteredItems = useMemo(() => {
     let result = [...tableItems]
 
@@ -525,6 +644,42 @@ export function Dashboard() {
           item.name.toLowerCase().includes(query) ||
           item.owner.display_name.toLowerCase().includes(query),
       )
+    }
+
+    // Owner filter
+    if (ownerFilter) {
+      result = result.filter(
+        (item) => item.owner.display_name === ownerFilter,
+      )
+    }
+
+    // Visibility filter (public/private)
+    if (visibilityFilter !== "all") {
+      result = result.filter((item) => {
+        if (item.isLikedSongs) return visibilityFilter === "private"
+        if (visibilityFilter === "public") return item.public === true
+        if (visibilityFilter === "private") return item.public === false || item.public === null
+        return true
+      })
+    }
+
+    // Date filters (created date)
+    if (dateAfterFilter) {
+      const afterDate = new Date(dateAfterFilter)
+      result = result.filter((item) => {
+        if (!item.createdAt) return false
+        return new Date(item.createdAt) >= afterDate
+      })
+    }
+
+    if (dateBeforeFilter) {
+      const beforeDate = new Date(dateBeforeFilter)
+      // Set to end of day
+      beforeDate.setHours(23, 59, 59, 999)
+      result = result.filter((item) => {
+        if (!item.createdAt) return false
+        return new Date(item.createdAt) <= beforeDate
+      })
     }
 
     result.sort((a, b) => {
@@ -544,7 +699,7 @@ export function Dashboard() {
     })
 
     return result
-  }, [tableItems, searchQuery, sortColumn, sortDirection])
+  }, [tableItems, searchQuery, sortColumn, sortDirection, ownerFilter, visibilityFilter, dateAfterFilter, dateBeforeFilter])
 
   const handleSort = (column: "name" | "tracks" | "owner") => {
     if (sortColumn === column) {
@@ -1380,6 +1535,19 @@ export function Dashboard() {
       onRefresh={handleRefreshPlaylists}
       isRefreshing={refreshing}
       loading={loading}
+      ownerFilter={ownerFilter}
+      onOwnerFilterChange={setOwnerFilter}
+      visibilityFilter={visibilityFilter}
+      onVisibilityFilterChange={setVisibilityFilter}
+      dateAfterFilter={dateAfterFilter}
+      onDateAfterFilterChange={setDateAfterFilter}
+      dateBeforeFilter={dateBeforeFilter}
+      onDateBeforeFilterChange={setDateBeforeFilter}
+      uniqueOwners={uniqueOwners}
+      hasActiveFilters={hasActiveFilters}
+      onClearAllFilters={clearAllFilters}
+      fetchingDates={fetchingDates}
+      totalCount={tableItems.length}
     />
   )
 
