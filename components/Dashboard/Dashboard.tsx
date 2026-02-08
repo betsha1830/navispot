@@ -365,30 +365,84 @@ export function Dashboard() {
   }, [playlists, navidromePlaylists, selectedIds, likedSongsCount, trackExportCache, playlistCreatedDates])
 
   // Background fetch of playlist created dates (earliest added_at)
+  // Fetches progressively — updates state after each playlist for immediate UI feedback
+  // Caches dates in localStorage to avoid re-fetching on every page load
   useEffect(() => {
     if (!spotify.isAuthenticated || !spotify.token || playlists.length === 0) return
 
-    // Only fetch for playlists we don't already have dates for
-    const missingIds = playlists
-      .filter((p) => !playlistCreatedDates.has(p.id))
-      .map((p) => p.id)
-
-    if (missingIds.length === 0) return
-
+    const CACHE_KEY = 'navispot-playlist-created-dates'
     let cancelled = false
-    setFetchingDates(true)
+
+    // Load cached dates from localStorage
+    function loadCachedDates(): Map<string, string> {
+      try {
+        const cached = localStorage.getItem(CACHE_KEY)
+        if (cached) {
+          const parsed = JSON.parse(cached) as Record<string, string>
+          return new Map(Object.entries(parsed))
+        }
+      } catch {
+        // Ignore parse errors
+      }
+      return new Map()
+    }
+
+    // Save dates to localStorage
+    function saveCachedDates(dates: Map<string, string>) {
+      try {
+        const obj: Record<string, string> = {}
+        dates.forEach((v, k) => { obj[k] = v })
+        localStorage.setItem(CACHE_KEY, JSON.stringify(obj))
+      } catch {
+        // Ignore storage errors
+      }
+    }
 
     async function fetchDates() {
+      // First, load any cached dates
+      const cachedDates = loadCachedDates()
+      if (cachedDates.size > 0) {
+        setPlaylistCreatedDates(cachedDates)
+      }
+
+      // Find playlists that still need dates
+      const currentDates = cachedDates.size > 0 ? cachedDates : playlistCreatedDates
+      const missingIds = playlists
+        .filter((p) => !currentDates.has(p.id))
+        .map((p) => p.id)
+
+      if (missingIds.length === 0) return
+
+      setFetchingDates(true)
       try {
         spotifyClient.setToken(spotify.token!)
-        const dates = await spotifyClient.getPlaylistCreatedDates(missingIds)
-        if (!cancelled) {
-          setPlaylistCreatedDates((prev) => {
-            const next = new Map(prev)
-            dates.forEach((date, id) => next.set(id, date))
-            return next
-          })
+
+        for (const playlistId of missingIds) {
+          if (cancelled) break
+
+          try {
+            const createdDate = await spotifyClient.getPlaylistCreatedDate(playlistId)
+            if (!cancelled && createdDate) {
+              setPlaylistCreatedDates((prev: Map<string, string>) => {
+                const next = new Map(prev)
+                next.set(playlistId, createdDate)
+                // Save to cache periodically (every 10 playlists)
+                if (next.size % 10 === 0) {
+                  saveCachedDates(next)
+                }
+                return next
+              })
+            }
+          } catch {
+            // Skip playlists that fail (e.g., deleted or access revoked)
+          }
         }
+
+        // Final save to cache
+        setPlaylistCreatedDates((prev: Map<string, string>) => {
+          saveCachedDates(prev)
+          return prev
+        })
       } catch (err) {
         console.warn("Failed to fetch playlist created dates:", err)
       } finally {
@@ -1493,6 +1547,7 @@ export function Dashboard() {
       hasActiveFilters={hasActiveFilters}
       onClearAllFilters={clearAllFilters}
       fetchingDates={fetchingDates}
+      totalCount={tableItems.length}
     />
   )
 

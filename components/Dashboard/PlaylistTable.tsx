@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useState } from "react"
 import Image from "next/image"
 import {
   PlaylistTableItem,
@@ -11,6 +11,7 @@ import {
 
 interface PlaylistTableProps {
   items: PlaylistTableItem[]
+  totalCount: number
   likedSongsCount: number
   selectedIds: Set<string>
   onToggleSelection: (id: string) => void
@@ -37,6 +38,7 @@ interface PlaylistTableProps {
   hasActiveFilters: boolean
   onClearAllFilters: () => void
   fetchingDates?: boolean
+  datesLoadedCount?: number
 }
 
 const LIKED_SONGS_ID = "liked-songs"
@@ -121,40 +123,38 @@ const PlaylistRow = ({
         border-b border-zinc-200 dark:border-zinc-800 transition-colors cursor-pointer
         ${
           isSelected
-            ? "bg-zinc-100 dark:bg-zinc-800 border-l-4 border-l-green-500"
+            ? "bg-green-50 dark:bg-green-900/20 border-l-4 border-l-green-500"
             : isEven
               ? "bg-white dark:bg-zinc-900"
               : "bg-zinc-50 dark:bg-zinc-800/50"
         }
-        hover:bg-zinc-50 dark:hover:bg-zinc-800/50
+        hover:bg-zinc-100 dark:hover:bg-zinc-800
       `}
       onClick={onToggle}
     >
-      <td className="px-4 py-3 w-[60px]">
-        <div className="relative">
-          <input
-            type="checkbox"
-            checked={isSelected}
-            onChange={onToggle}
-            onClick={(e) => e.stopPropagation()}
-            className="h-4 w-4 rounded border-zinc-300 text-green-600 focus:ring-green-500 dark:border-zinc-600 dark:bg-zinc-800"
-          />
-        </div>
+      <td className="px-3 py-2 w-10">
+        <input
+          type="checkbox"
+          checked={isSelected}
+          onChange={onToggle}
+          onClick={(e) => e.stopPropagation()}
+          className="h-4 w-4 rounded border-zinc-300 text-green-600 focus:ring-green-500 dark:border-zinc-600 dark:bg-zinc-800"
+        />
       </td>
-      <td className="px-4 py-3 w-[80px]">
-        <div className="relative h-12 w-12 overflow-hidden rounded-md bg-zinc-100 dark:bg-zinc-800">
+      <td className="px-2 py-2 w-14 hidden sm:table-cell">
+        <div className="relative h-10 w-10 overflow-hidden rounded-md bg-zinc-100 dark:bg-zinc-800 flex-shrink-0">
           {item.images?.[0]?.url ? (
             <Image
               src={item.images[0].url}
               alt={item.name}
               fill
               className="object-cover"
-              sizes="48px"
+              sizes="40px"
             />
           ) : (
             <div className="flex h-full items-center justify-center">
               <svg
-                className="h-6 w-6 text-zinc-400"
+                className="h-5 w-5 text-zinc-400"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -170,68 +170,72 @@ const PlaylistRow = ({
           )}
         </div>
       </td>
-      <td className="px-4 py-3 min-w-0 max-w-[300px]">
-        <div className="flex items-center gap-2">
-          {item.isLikedSongs && (
-            <svg
-              className="h-4 w-4 text-pink-500 flex-shrink-0"
-              fill="currentColor"
-              viewBox="0 0 20 20"
+      <td className="px-2 py-2 min-w-0">
+        <div className="flex flex-col">
+          <div className="flex items-center gap-1.5">
+            {item.isLikedSongs && (
+              <svg
+                className="h-3.5 w-3.5 text-pink-500 flex-shrink-0"
+                fill="currentColor"
+                viewBox="0 0 20 20"
+              >
+                <path
+                  fillRule="evenodd"
+                  d="M3.172 5.172a4 4 0 015.656 0L10 6.343l1.172-1.171a4 4 0 115.656 5.656L10 17.657l-6.828-6.829a4 4 0 010-5.656z"
+                  clipRule="evenodd"
+                />
+              </svg>
+            )}
+            <span
+              className="truncate font-medium text-sm text-zinc-900 dark:text-zinc-100"
+              title={item.name}
             >
-              <path
-                fillRule="evenodd"
-                d="M3.172 5.172a4 4 0 015.656 0L10 6.343l1.172-1.171a4 4 0 115.656 5.656L10 17.657l-6.828-6.829a4 4 0 010-5.656z"
-                clipRule="evenodd"
-              />
-            </svg>
-          )}
-          <span
-            className="truncate font-medium text-zinc-900 dark:text-zinc-100"
-            title={item.name}
-          >
-            {item.name}
-          </span>
+              {item.name}
+            </span>
+          </div>
+          {/* Mobile: show tracks and owner inline */}
+          <div className="flex items-center gap-2 text-xs text-zinc-500 dark:text-zinc-400 sm:hidden mt-0.5">
+            <span>{item.tracks.total.toLocaleString()} tracks</span>
+            <span>•</span>
+            <span className="truncate">{item.owner.display_name}</span>
+          </div>
         </div>
       </td>
-      <td className="px-4 py-3 w-[120px] text-sm text-zinc-600 dark:text-zinc-400">
-        {item.tracks.total.toLocaleString()} tracks
+      <td className="px-2 py-2 w-20 text-xs text-zinc-600 dark:text-zinc-400 hidden sm:table-cell">
+        {item.tracks.total.toLocaleString()}
       </td>
-      <td className="px-4 py-3 w-[160px]">
+      <td className="px-2 py-2 w-28 hidden md:table-cell">
         <span
-          className="truncate text-sm text-zinc-600 dark:text-zinc-400 block"
+          className="truncate text-xs text-zinc-600 dark:text-zinc-400 block"
           title={item.owner.display_name}
         >
           {item.owner.display_name}
         </span>
       </td>
-      <td className="px-4 py-3 w-[100px]">
+      <td className="px-2 py-2 w-20 hidden lg:table-cell">
         {item.createdAt ? (
           <span
             className="text-xs text-zinc-500 dark:text-zinc-400"
             title={new Date(item.createdAt).toLocaleString()}
           >
-            {new Date(item.createdAt).toLocaleDateString()}
+            {new Date(item.createdAt).toLocaleDateString(undefined, { month: 'short', year: '2-digit' })}
           </span>
         ) : (
           <span className="text-xs text-zinc-400 dark:text-zinc-600">—</span>
         )}
       </td>
-      <td className="px-4 py-3 w-[80px]">
+      <td className="px-2 py-2 w-16 hidden lg:table-cell">
         {item.public === true ? (
-          <span className="inline-flex items-center gap-1 text-xs text-green-600 dark:text-green-400" title="Public playlist">
+          <span className="inline-flex items-center text-xs text-green-600 dark:text-green-400" title="Public">
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-            Public
           </span>
         ) : item.public === false ? (
-          <span className="inline-flex items-center gap-1 text-xs text-zinc-500 dark:text-zinc-400" title="Private playlist">
+          <span className="inline-flex items-center text-xs text-zinc-400 dark:text-zinc-500" title="Private">
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
-            Private
           </span>
-        ) : (
-          <span className="text-xs text-zinc-400 dark:text-zinc-600">—</span>
-        )}
+        ) : null}
       </td>
-      <td className="px-4 py-3 w-[120px]">
+      <td className="px-2 py-2 w-24">
         <StatusBadge status={item.exportStatus} />
       </td>
     </tr>
@@ -257,30 +261,28 @@ const LovedSongsRow = ({
         border-b border-zinc-200 dark:border-zinc-800 transition-colors cursor-pointer
         ${
           isSelected
-            ? "bg-zinc-100 dark:bg-zinc-800 border-l-4 border-l-green-500"
+            ? "bg-green-50 dark:bg-green-900/20 border-l-4 border-l-green-500"
             : isEven
               ? "bg-white dark:bg-zinc-900"
               : "bg-zinc-50 dark:bg-zinc-800/50"
         }
-        hover:bg-zinc-50 dark:hover:bg-zinc-800/50
+        hover:bg-zinc-100 dark:hover:bg-zinc-800
       `}
       onClick={onToggle}
     >
-      <td className="px-4 py-3 w-[60px]">
-        <div className="relative">
-          <input
-            type="checkbox"
-            checked={isSelected}
-            onChange={onToggle}
-            onClick={(e) => e.stopPropagation()}
-            className="h-4 w-4 rounded border-zinc-300 text-green-600 focus:ring-green-500 dark:border-zinc-600 dark:bg-zinc-800"
-          />
-        </div>
+      <td className="px-3 py-2 w-10">
+        <input
+          type="checkbox"
+          checked={isSelected}
+          onChange={onToggle}
+          onClick={(e) => e.stopPropagation()}
+          className="h-4 w-4 rounded border-zinc-300 text-green-600 focus:ring-green-500 dark:border-zinc-600 dark:bg-zinc-800"
+        />
       </td>
-      <td className="px-4 py-3 w-[80px]">
-        <div className="relative h-12 w-12 overflow-hidden rounded-md bg-pink-100 dark:bg-pink-900/30">
+      <td className="px-2 py-2 w-14 hidden sm:table-cell">
+        <div className="relative h-10 w-10 overflow-hidden rounded-md bg-pink-100 dark:bg-pink-900/30 flex items-center justify-center">
           <svg
-            className="h-6 w-6 text-pink-500 absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2"
+            className="h-5 w-5 text-pink-500"
             fill="currentColor"
             viewBox="0 0 20 20"
           >
@@ -292,48 +294,47 @@ const LovedSongsRow = ({
           </svg>
         </div>
       </td>
-      <td className="px-4 py-3 min-w-0 max-w-[300px]">
-        <div className="flex items-center gap-2">
-          <svg
-            className="h-4 w-4 text-pink-500 flex-shrink-0"
-            fill="currentColor"
-            viewBox="0 0 20 20"
-          >
-            <path
-              fillRule="evenodd"
-              d="M3.172 5.172a4 4 0 015.656 0L10 6.343l1.172-1.171a4 4 0 115.656 5.656L10 17.657l-6.828-6.829a4 4 0 010-5.656z"
-              clipRule="evenodd"
-            />
-          </svg>
-          <span
-            className="truncate font-medium text-zinc-900 dark:text-zinc-100"
-            title="Liked Songs"
-          >
-            Liked Songs
-          </span>
+      <td className="px-2 py-2 min-w-0">
+        <div className="flex flex-col">
+          <div className="flex items-center gap-1.5">
+            <svg
+              className="h-3.5 w-3.5 text-pink-500 flex-shrink-0"
+              fill="currentColor"
+              viewBox="0 0 20 20"
+            >
+              <path
+                fillRule="evenodd"
+                d="M3.172 5.172a4 4 0 015.656 0L10 6.343l1.172-1.171a4 4 0 115.656 5.656L10 17.657l-6.828-6.829a4 4 0 010-5.656z"
+                clipRule="evenodd"
+              />
+            </svg>
+            <span className="font-medium text-sm text-zinc-900 dark:text-zinc-100">
+              Liked Songs
+            </span>
+          </div>
+          {/* Mobile: show tracks inline */}
+          <div className="flex items-center gap-2 text-xs text-zinc-500 dark:text-zinc-400 sm:hidden mt-0.5">
+            <span>{count.toLocaleString()} tracks</span>
+            <span>•</span>
+            <span>You</span>
+          </div>
         </div>
       </td>
-      <td className="px-4 py-3 w-[120px] text-sm text-zinc-600 dark:text-zinc-400">
-        {count.toLocaleString()} tracks
+      <td className="px-2 py-2 w-20 text-xs text-zinc-600 dark:text-zinc-400 hidden sm:table-cell">
+        {count.toLocaleString()}
       </td>
-      <td className="px-4 py-3 w-[160px]">
-        <span
-          className="text-sm text-zinc-600 dark:text-zinc-400 truncate max-w-[160px]"
-          title="You"
-        >
-          You
-        </span>
+      <td className="px-2 py-2 w-28 hidden md:table-cell">
+        <span className="text-xs text-zinc-600 dark:text-zinc-400">You</span>
       </td>
-      <td className="px-4 py-3 w-[100px]">
+      <td className="px-2 py-2 w-20 hidden lg:table-cell">
         <span className="text-xs text-zinc-400 dark:text-zinc-600">—</span>
       </td>
-      <td className="px-4 py-3 w-[80px]">
-        <span className="inline-flex items-center gap-1 text-xs text-zinc-500 dark:text-zinc-400" title="Private">
+      <td className="px-2 py-2 w-16 hidden lg:table-cell">
+        <span className="inline-flex items-center text-xs text-zinc-400 dark:text-zinc-500" title="Private">
           <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
-          Private
         </span>
       </td>
-      <td className="px-4 py-3 w-[120px]">
+      <td className="px-2 py-2 w-24">
         <StatusBadge status="none" />
       </td>
     </tr>
@@ -342,6 +343,7 @@ const LovedSongsRow = ({
 
 export function PlaylistTable({
   items,
+  totalCount,
   likedSongsCount,
   selectedIds,
   onToggleSelection,
@@ -367,72 +369,13 @@ export function PlaylistTable({
   hasActiveFilters,
   onClearAllFilters,
   fetchingDates = false,
+  datesLoadedCount = 0,
 }: PlaylistTableProps) {
   const [showFilters, setShowFilters] = useState(false)
-  const allItems = useMemo(() => {
-    const likedSongsItem: PlaylistTableItem = {
-      id: LIKED_SONGS_ID,
-      name: "Liked Songs",
-      images: [{ url: "" }],
-      owner: { display_name: "You" },
-      tracks: { total: likedSongsCount },
-      snapshot_id: "",
-      isLikedSongs: true,
-      selected: selectedIds.has(LIKED_SONGS_ID),
-      exportStatus: "none",
-    }
 
-    const likedSongsIndex = items.findIndex((item) => !item.isLikedSongs)
-    const regularPlaylists = items.filter((item) => !item.isLikedSongs)
-
-    return [likedSongsItem, ...regularPlaylists]
-  }, [items, likedSongsCount, selectedIds])
-
-  const filteredItems = useMemo(() => {
-    let result = [...allItems]
-
-    if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase()
-      result = result.filter(
-        (item) =>
-          item.name.toLowerCase().includes(query) ||
-          item.owner.display_name.toLowerCase().includes(query),
-      )
-    }
-
-    if (sortColumn && sortDirection) {
-      result.sort((a, b) => {
-        let aVal: string | number
-        let bVal: string | number
-
-        switch (sortColumn) {
-          case "name":
-            aVal = a.name.toLowerCase()
-            bVal = b.name.toLowerCase()
-            break
-          case "tracks":
-            aVal = a.tracks.total
-            bVal = b.tracks.total
-            break
-          case "owner":
-            aVal = a.owner.display_name.toLowerCase()
-            bVal = b.owner.display_name.toLowerCase()
-            break
-          default:
-            return 0
-        }
-
-        if (aVal < bVal) return sortDirection === "asc" ? -1 : 1
-        if (aVal > bVal) return sortDirection === "asc" ? 1 : -1
-        return 0
-      })
-    }
-
-    return result
-  }, [allItems, searchQuery, sortColumn, sortDirection])
-
-  const visibleCount = filteredItems.length
-  const selectedCount = filteredItems.filter((item) =>
+  // items are already filtered, sorted, and include Liked Songs from Dashboard
+  const visibleCount = items.length
+  const selectedCount = items.filter((item) =>
     selectedIds.has(item.id),
   ).length
   const allVisibleSelected = visibleCount > 0 && selectedCount === visibleCount
@@ -522,8 +465,16 @@ export function PlaylistTable({
               />
             </svg>
           </button>
+          {!isExporting && visibleCount > 0 && (
+            <button
+              onClick={onToggleSelectAll}
+              className="text-xs font-medium text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 whitespace-nowrap"
+            >
+              {allVisibleSelected ? "Deselect All" : "Select All"}
+            </button>
+          )}
           <span>
-            Showing {filteredItems.length} of {allItems.length} playlists
+            Showing {items.length} of {totalCount} playlists
             {selectedIds.size > 0 && !isExporting && (
               <span className="ml-2 text-green-600 dark:text-green-400 font-medium">
                 ({selectedIds.size} selected)
@@ -571,7 +522,9 @@ export function PlaylistTable({
               <label className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
                 Created after
                 {fetchingDates && (
-                  <span className="ml-1 text-blue-500 animate-pulse">⟳</span>
+                  <span className="ml-1 text-blue-500 animate-pulse" title={`Loading dates: ${datesLoadedCount}/${totalCount - 1} playlists`}>
+                    ⟳ {datesLoadedCount}/{totalCount - 1}
+                  </span>
                 )}
               </label>
               <input
@@ -611,27 +564,25 @@ export function PlaylistTable({
         }`}
       >
         <div className="overflow-auto h-full">
-          <table className="w-full divide-y divide-zinc-200 dark:divide-zinc-800">
-            <thead className="sticky top-0 bg-white/100 dark:bg-zinc-900/100 backdrop-blur-xs z-10">
+          <table className="w-full divide-y divide-zinc-200 dark:divide-zinc-800 table-fixed">
+            <thead className="sticky top-0 bg-white dark:bg-zinc-900 z-10">
               <tr className="border-b border-zinc-200 dark:border-zinc-800">
-                <th className="px-4 py-3 text-left w-[60px]">
-                  <div className="relative">
-                    <input
-                      type="checkbox"
-                      checked={allVisibleSelected}
-                      onChange={onToggleSelectAll}
-                      disabled={isExporting || visibleCount === 0}
-                      className="h-4 w-4 rounded border-zinc-300 text-green-600 focus:ring-green-500 dark:border-zinc-600 dark:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50"
-                    />
-                  </div>
+                <th className="px-3 py-2 text-left w-10">
+                  <input
+                    type="checkbox"
+                    checked={allVisibleSelected}
+                    onChange={onToggleSelectAll}
+                    disabled={isExporting || visibleCount === 0}
+                    className="h-4 w-4 rounded border-zinc-300 text-green-600 focus:ring-green-500 dark:border-zinc-600 dark:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50"
+                  />
                 </th>
-                <th className="px-4 py-3 text-left w-[80px]">
+                <th className="px-2 py-2 text-left w-14 hidden sm:table-cell">
                   <span className="text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
-                    Cover
+                    Art
                   </span>
                 </th>
                 <th
-                  className={`px-4 py-3 text-left min-w-0 select-none ${
+                  className={`px-2 py-2 text-left min-w-0 select-none ${
                     isExporting ? "cursor-not-allowed" : "cursor-pointer"
                   }`}
                   onClick={() => !isExporting && onSort("name")}
@@ -654,7 +605,7 @@ export function PlaylistTable({
                   </div>
                 </th>
                 <th
-                  className={`px-4 py-3 text-left w-[120px] select-none ${
+                  className={`px-2 py-2 text-left w-20 select-none hidden sm:table-cell ${
                     isExporting ? "cursor-not-allowed" : "cursor-pointer"
                   }`}
                   onClick={() => !isExporting && onSort("tracks")}
@@ -667,7 +618,7 @@ export function PlaylistTable({
                           : "text-zinc-500 dark:text-zinc-400"
                       }`}
                     >
-                      Tracks
+                      #
                     </span>
                     {!isExporting && (
                       <SortIcon
@@ -679,7 +630,7 @@ export function PlaylistTable({
                   </div>
                 </th>
                 <th
-                  className={`px-4 py-3 text-left w-[160px] select-none ${
+                  className={`px-2 py-2 text-left w-28 select-none hidden md:table-cell ${
                     isExporting ? "cursor-not-allowed" : "cursor-pointer"
                   }`}
                   onClick={() => !isExporting && onSort("owner")}
@@ -703,20 +654,20 @@ export function PlaylistTable({
                     )}
                   </div>
                 </th>
-                <th className="px-4 py-3 text-left w-[100px]">
+                <th className="px-2 py-2 text-left w-20 hidden lg:table-cell">
                   <span className="text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
-                    Created
+                    Date
                     {fetchingDates && (
-                      <span className="ml-1 text-blue-500 animate-pulse">⟳</span>
+                      <span className="ml-1 text-blue-500 animate-pulse text-[10px]">⟳</span>
                     )}
                   </span>
                 </th>
-                <th className="px-4 py-3 text-left w-[80px]">
-                  <span className="text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
-                    Visibility
+                <th className="px-2 py-2 text-left w-16 hidden lg:table-cell">
+                  <span className="text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400" title="Visibility">
+                    Vis
                   </span>
                 </th>
-                <th className="px-4 py-3 text-left w-[120px]">
+                <th className="px-2 py-2 text-left w-24">
                   <span className="text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
                     Status
                   </span>
@@ -724,8 +675,8 @@ export function PlaylistTable({
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-200 dark:divide-zinc-800 bg-white dark:bg-zinc-900">
-              {filteredItems.length > 0 ? (
-                filteredItems.map((item, index) => {
+              {items.length > 0 ? (
+                items.map((item, index) => {
                   if (item.id === LIKED_SONGS_ID) {
                     return (
                       <LovedSongsRow
