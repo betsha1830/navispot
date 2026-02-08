@@ -574,13 +574,15 @@ export function PlaylistTable({
                   </td>
                 </tr>
               ) : (
-                items.map((item) => (
+                items.map((item, index) => (
                   <tr
                     key={item.id}
                     className={`hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors ${
                       selectedIds.has(item.id)
                         ? "bg-blue-50/50 dark:bg-blue-900/10"
-                        : ""
+                        : index % 2 === 0
+                          ? "bg-white dark:bg-zinc-900"
+                          : "bg-zinc-50 dark:bg-zinc-800/50"
                     }`}
                   >
                     <td className="px-3 py-2">
