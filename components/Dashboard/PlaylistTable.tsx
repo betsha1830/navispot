@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useRef, useEffect } from "react"
 import Image from "next/image"
 import {
   PlaylistTableItem,
@@ -145,6 +145,27 @@ export function PlaylistTable({
   datesLoadedCount = 0,
 }: PlaylistTableProps) {
   const [showFilters, setShowFilters] = useState(false)
+  const filterButtonRef = useRef<HTMLButtonElement>(null)
+  const filterPanelRef = useRef<HTMLDivElement>(null)
+
+  // Close filter panel when clicking outside
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (
+        filterPanelRef.current &&
+        !filterPanelRef.current.contains(event.target as Node) &&
+        filterButtonRef.current &&
+        !filterButtonRef.current.contains(event.target as Node)
+      ) {
+        setShowFilters(false)
+      }
+    }
+
+    if (showFilters) {
+      document.addEventListener("mousedown", handleClickOutside)
+      return () => document.removeEventListener("mousedown", handleClickOutside)
+    }
+  }, [showFilters])
 
   // items are already filtered, sorted, and include Liked Songs from Dashboard
   const visibleCount = items.length
@@ -199,33 +220,190 @@ export function PlaylistTable({
         </div>
         <div className="flex items-center gap-2 text-sm text-zinc-500 dark:text-zinc-400">
           {/* Filter Toggle Button */}
-          <button
-            onClick={() => setShowFilters((prev) => !prev)}
-            disabled={isExporting}
-            className={`group relative flex items-center gap-2 px-4 py-2 rounded-lg border text-sm font-medium transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-50 ${
-              hasActiveFilters || showFilters
-                ? "border-blue-400 bg-gradient-to-r from-blue-50 to-indigo-50 text-blue-700 dark:border-blue-600 dark:from-blue-900/30 dark:to-indigo-900/20 dark:text-blue-300 shadow-sm shadow-blue-100 dark:shadow-none"
-                : "border-zinc-200 bg-white text-zinc-600 hover:border-zinc-300 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:border-zinc-600 dark:hover:bg-zinc-700/50"
-            }`}
-          >
-            <svg className="w-4 h-4 transition-transform duration-200 group-hover:scale-110" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
-            </svg>
-            <span>Filters</span>
-            {activeFilterCount > 0 && (
-              <span className="flex items-center justify-center min-w-[20px] h-5 px-1.5 text-xs font-bold text-white bg-gradient-to-r from-blue-500 to-indigo-500 rounded-full shadow-sm">
-                {activeFilterCount}
-              </span>
-            )}
-            <svg 
-              className={`w-3.5 h-3.5 text-zinc-400 transition-transform duration-200 ${showFilters ? "rotate-180" : ""}`} 
-              fill="none" 
-              stroke="currentColor" 
-              viewBox="0 0 24 24"
+          <div className="relative">
+            <button
+              ref={filterButtonRef}
+              onClick={() => setShowFilters((prev) => !prev)}
+              disabled={isExporting}
+              className={`group relative flex items-center gap-2 px-4 py-2 rounded-lg border text-sm font-medium transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-50 ${
+                hasActiveFilters || showFilters
+                  ? "border-blue-400 bg-gradient-to-r from-blue-50 to-indigo-50 text-blue-700 dark:border-blue-600 dark:from-blue-900/30 dark:to-indigo-900/20 dark:text-blue-300 shadow-sm shadow-blue-100 dark:shadow-none"
+                  : "border-zinc-200 bg-white text-zinc-600 hover:border-zinc-300 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:border-zinc-600 dark:hover:bg-zinc-700/50"
+              }`}
             >
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-            </svg>
-          </button>
+              <svg className="w-4 h-4 transition-transform duration-200 group-hover:scale-110" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+              </svg>
+              <span>Filters</span>
+              {activeFilterCount > 0 && (
+                <span className="flex items-center justify-center min-w-[20px] h-5 px-1.5 text-xs font-bold text-white bg-gradient-to-r from-blue-500 to-indigo-500 rounded-full shadow-sm">
+                  {activeFilterCount}
+                </span>
+              )}
+              <svg 
+                className={`w-3.5 h-3.5 text-zinc-400 transition-transform duration-200 ${showFilters ? "rotate-180" : ""}`} 
+                fill="none" 
+                stroke="currentColor" 
+                viewBox="0 0 24 24"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+
+            {/* Filter Popover */}
+            {showFilters && (
+              <div
+                ref={filterPanelRef}
+                className="absolute right-0 top-full mt-2 w-80 sm:w-96 z-50 animate-in fade-in slide-in-from-top-2 duration-200"
+              >
+                <div className="p-4 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 shadow-xl shadow-zinc-200/50 dark:shadow-black/50">
+                  {/* Header */}
+                  <div className="flex items-center justify-between mb-4 pb-3 border-b border-zinc-100 dark:border-zinc-800">
+                    <h3 className="text-sm font-semibold text-zinc-800 dark:text-zinc-100 flex items-center gap-2">
+                      <svg className="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+                      </svg>
+                      Filter Playlists
+                    </h3>
+                    <button
+                      onClick={() => setShowFilters(false)}
+                      className="p-1 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-all"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+
+                  {/* Filter Fields */}
+                  <div className="space-y-4">
+                    {/* Owner Filter */}
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
+                        Owner
+                      </label>
+                      <div className="relative">
+                        <select
+                          value={ownerFilter}
+                          onChange={(e) => onOwnerFilterChange(e.target.value)}
+                          className="w-full appearance-none px-3 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-sm text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 cursor-pointer"
+                        >
+                          <option value="">All owners</option>
+                          {uniqueOwners.map((owner) => (
+                            <option key={owner} value={owner}>{owner}</option>
+                          ))}
+                        </select>
+                        <svg className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                        </svg>
+                      </div>
+                    </div>
+
+                    {/* Visibility Filter */}
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
+                        Visibility
+                      </label>
+                      <div className="flex rounded-lg border border-zinc-200 dark:border-zinc-700 p-1 bg-zinc-50 dark:bg-zinc-800/50">
+                        {(["all", "public", "private"] as const).map((option) => (
+                          <button
+                            key={option}
+                            onClick={() => onVisibilityFilterChange(option)}
+                            className={`flex-1 px-3 py-1.5 text-xs font-medium rounded-md transition-all ${
+                              visibilityFilter === option
+                                ? "bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 shadow-sm border border-zinc-200 dark:border-zinc-600"
+                                : "text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
+                            }`}
+                          >
+                            {option.charAt(0).toUpperCase() + option.slice(1)}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Date Range */}
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium text-zinc-500 dark:text-zinc-400 flex items-center justify-between">
+                        <span>Date Range</span>
+                        {fetchingDates && (
+                          <span className="text-blue-500 flex items-center gap-1">
+                            <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                            <span className="text-[10px]">{datesLoadedCount}/{totalCount - 1}</span>
+                          </span>
+                        )}
+                      </label>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="relative">
+                          <input
+                            type="date"
+                            value={dateAfterFilter}
+                            onChange={(e) => onDateAfterFilterChange(e.target.value)}
+                            placeholder="From"
+                            className="w-full px-2 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                          />
+                          {dateAfterFilter && (
+                            <button
+                              onClick={() => onDateAfterFilterChange("")}
+                              className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 text-zinc-400 hover:text-zinc-600"
+                            >
+                              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                              </svg>
+                            </button>
+                          )}
+                        </div>
+                        <div className="relative">
+                          <input
+                            type="date"
+                            value={dateBeforeFilter}
+                            onChange={(e) => onDateBeforeFilterChange(e.target.value)}
+                            placeholder="To"
+                            className="w-full px-2 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-xs text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                          />
+                          {dateBeforeFilter && (
+                            <button
+                              onClick={() => onDateBeforeFilterChange("")}
+                              className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 text-zinc-400 hover:text-zinc-600"
+                            >
+                              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                              </svg>
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Footer */}
+                  <div className="mt-4 pt-3 border-t border-zinc-100 dark:border-zinc-800 flex items-center justify-between">
+                    <span className="text-xs text-zinc-500">
+                      {items.length} of {totalCount} playlists
+                    </span>
+                    <div className="flex gap-2">
+                      {hasActiveFilters && (
+                        <button
+                          onClick={onClearAllFilters}
+                          className="px-3 py-1.5 text-xs font-medium text-red-600 hover:text-red-700 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20 rounded-lg transition-all"
+                        >
+                          Clear all
+                        </button>
+                      )}
+                      <button
+                        onClick={() => setShowFilters(false)}
+                        className="px-3 py-1.5 text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-all"
+                      >
+                        Done
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
 
           {/* Refresh Button */}
           <button
@@ -313,145 +491,6 @@ export function PlaylistTable({
           </button>
         </div>
       )}
-
-      {/* Filter Panel */}
-      <div className={`overflow-hidden transition-all duration-300 ease-in-out ${showFilters ? "max-h-96 opacity-100 mb-3" : "max-h-0 opacity-0"}`}>
-        <div className="p-4 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-gradient-to-br from-white to-zinc-50 dark:from-zinc-800 dark:to-zinc-900/50 shadow-sm">
-          {/* Section Header */}
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-sm font-semibold text-zinc-700 dark:text-zinc-200 flex items-center gap-2">
-              <svg className="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
-              </svg>
-              Filter Playlists
-            </h3>
-            {fetchingDates && (
-              <div className="flex items-center gap-2 text-xs text-blue-600 dark:text-blue-400">
-                <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-                <span>Loading dates... {datesLoadedCount}/{totalCount - 1}</span>
-              </div>
-            )}
-          </div>
-
-          {/* Filter Grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            {/* Owner Filter */}
-            <div className="space-y-2">
-              <label className="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wide">
-                Owner
-              </label>
-              <div className="relative">
-                <select
-                  value={ownerFilter}
-                  onChange={(e) => onOwnerFilterChange(e.target.value)}
-                  className="w-full appearance-none px-3 py-2.5 rounded-lg border border-zinc-200 dark:border-zinc-600 bg-white dark:bg-zinc-800 text-sm text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all cursor-pointer hover:border-zinc-300 dark:hover:border-zinc-500"
-                >
-                  <option value="">All owners</option>
-                  {uniqueOwners.map((owner) => (
-                    <option key={owner} value={owner}>{owner}</option>
-                  ))}
-                </select>
-                <svg className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                </svg>
-              </div>
-            </div>
-
-            {/* Visibility Filter */}
-            <div className="space-y-2">
-              <label className="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wide">
-                Visibility
-              </label>
-              <div className="flex rounded-lg border border-zinc-200 dark:border-zinc-600 p-1 bg-zinc-50 dark:bg-zinc-800/50">
-                {(["all", "public", "private"] as const).map((option) => (
-                  <button
-                    key={option}
-                    onClick={() => onVisibilityFilterChange(option)}
-                    className={`flex-1 px-3 py-1.5 text-xs font-medium rounded-md transition-all duration-200 ${
-                      visibilityFilter === option
-                        ? "bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 shadow-sm"
-                        : "text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
-                    }`}
-                  >
-                    {option.charAt(0).toUpperCase() + option.slice(1)}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Date After */}
-            <div className="space-y-2">
-              <label className="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wide">
-                Created After
-              </label>
-              <div className="relative">
-                <input
-                  type="date"
-                  value={dateAfterFilter}
-                  onChange={(e) => onDateAfterFilterChange(e.target.value)}
-                  className="w-full px-3 py-2.5 rounded-lg border border-zinc-200 dark:border-zinc-600 bg-white dark:bg-zinc-800 text-sm text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all hover:border-zinc-300 dark:hover:border-zinc-500"
-                />
-                {dateAfterFilter && (
-                  <button
-                    onClick={() => onDateAfterFilterChange("")}
-                    className="absolute right-8 top-1/2 -translate-y-1/2 p-0.5 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
-                  >
-                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
-                )}
-              </div>
-            </div>
-
-            {/* Date Before */}
-            <div className="space-y-2">
-              <label className="text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wide">
-                Created Before
-              </label>
-              <div className="relative">
-                <input
-                  type="date"
-                  value={dateBeforeFilter}
-                  onChange={(e) => onDateBeforeFilterChange(e.target.value)}
-                  className="w-full px-3 py-2.5 rounded-lg border border-zinc-200 dark:border-zinc-600 bg-white dark:bg-zinc-800 text-sm text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all hover:border-zinc-300 dark:hover:border-zinc-500"
-                />
-                {dateBeforeFilter && (
-                  <button
-                    onClick={() => onDateBeforeFilterChange("")}
-                    className="absolute right-8 top-1/2 -translate-y-1/2 p-0.5 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
-                  >
-                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* Results Count */}
-          <div className="mt-4 pt-3 border-t border-zinc-200 dark:border-zinc-700 flex items-center justify-between">
-            <span className="text-xs text-zinc-500 dark:text-zinc-400">
-              Showing <span className="font-semibold text-zinc-700 dark:text-zinc-300">{items.length}</span> of <span className="font-semibold text-zinc-700 dark:text-zinc-300">{totalCount}</span> playlists
-            </span>
-            {hasActiveFilters && (
-              <button
-                onClick={onClearAllFilters}
-                className="text-xs font-medium text-red-500 hover:text-red-600 dark:text-red-400 dark:hover:text-red-300 flex items-center gap-1 px-3 py-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-all"
-              >
-                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                </svg>
-                Reset all filters
-              </button>
-            )}
-          </div>
-        </div>
-      </div>
 
       {/* Table */}
       <div
