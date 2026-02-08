@@ -871,7 +871,7 @@ export function PlaylistTable({
                       )}
                     </td>
                     <td className="px-2 py-2">
-                      <div className="font-medium text-sm text-zinc-900 dark:text-zinc-100 truncate">
+                      <div className="font-medium text-sm text-zinc-900 dark:text-zinc-100 truncate" title={item.name}>
                         {item.name}
                       </div>
                       {item.id === LIKED_SONGS_ID && (
@@ -884,7 +884,7 @@ export function PlaylistTable({
                       {item.tracks.total.toLocaleString()}
                     </td>
                     <td className="px-2 py-2">
-                      <div className="text-sm text-zinc-600 dark:text-zinc-400 truncate">
+                      <div className="text-sm text-zinc-600 dark:text-zinc-400 truncate" title={item.owner.display_name}>
                         {item.owner.display_name}
                       </div>
                     </td>
@@ -906,7 +906,7 @@ export function PlaylistTable({
                       )}
                     </td>
                     <td className="px-2 py-2 hidden lg:table-cell">
-                      <div className="text-sm text-zinc-600 dark:text-zinc-400">
+                      <div className="text-sm text-zinc-600 dark:text-zinc-400" title={item.createdAt ? formatDate(item.createdAt) : undefined}>
                         {item.createdAt ? formatDate(item.createdAt) : "—"}
                       </div>
                     </td>

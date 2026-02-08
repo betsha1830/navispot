@@ -1819,3 +1819,278 @@ useEffect(() => {
 - **Export statistics dashboard**: Visualize export history and trends
 - **Batch cache operations**: Clear multiple playlists at once
 - **Import/Export cache**: Backup and restore cache data
+
+---
+
+## UI Polish and Improvements (February 8, 2026)
+
+### Overview
+
+Implemented several UI polish improvements including a portal-based DatePicker, enhanced calendar styling, filter pills repositioning, and table cell tooltips for better user experience.
+
+---
+
+### Portal-Based DatePicker with Viewport Positioning
+
+**Problem:** The calendar dropdown in the date filter was being clipped by the popover's overflow-hidden container and positioned incorrectly when there was limited viewport space.
+
+**Solution:** Rewrote the DatePicker component to use React Portal rendering with smart viewport boundary detection.
+
+#### Implementation Details
+
+**`components/Dashboard/PlaylistTable.tsx`** - DatePicker Component
+
+```typescript
+// Portal-based calendar with viewport positioning
+const [calendarPosition, setCalendarPosition] = useState({ top: 0, left: 0, ready: false })
+
+useEffect(() => {
+  if (isOpen && buttonRef.current) {
+    const rect = buttonRef.current.getBoundingClientRect()
+    const calendarWidth = 280
+    const calendarHeight = 280
+    const margin = 4
+    
+    // Center horizontally relative to button
+    const buttonCenter = rect.left + rect.width / 2
+    let left = buttonCenter - calendarWidth / 2
+    left = Math.max(margin, Math.min(left, window.innerWidth - calendarWidth - margin))
+    
+    // Check available space and position accordingly
+    const spaceAbove = rect.top
+    const spaceBelow = window.innerHeight - rect.bottom
+    
+    let top
+    if (spaceAbove >= calendarHeight + margin) {
+      top = rect.top - calendarHeight - margin  // Show above
+    } else {
+      top = rect.bottom + margin  // Show below
+    }
+    
+    setCalendarPosition({ top, left, ready: true })
+  }
+}, [isOpen])
+```
+
+**Key Features:**
+- ✅ Renders via `createPortal()` to document.body to avoid clipping
+- ✅ Calculates position based on button's bounding rect
+- ✅ Smart viewport detection: shows above button when space is limited below
+- ✅ Respects viewport boundaries with minimum margins
+- ✅ Uses `ready` flag to prevent initial render at 0,0 coordinates
+- ✅ Memoized with `useMemo` to prevent flickering during data fetching
+
+**Portal Rendering:**
+```tsx
+{isOpen && calendarPosition.ready && createPortal(
+  <div 
+    data-calendar-portal
+    className="fixed z-[99999] bg-white dark:bg-zinc-900 rounded-lg border p-2"
+    style={{
+      top: `${calendarPosition.top}px`,
+      left: `${calendarPosition.left}px`,
+      willChange: 'transform'
+    }}
+  >
+    <Calendar mode="single" selected={date} onSelect={handleSelect} />
+  </div>,
+  document.body
+)}
+```
+
+---
+
+### Calendar Styling Updates
+
+Updated the shadcn Calendar component to use the project's gray color scheme and primary blue color.
+
+#### Changes Made
+
+**`components/ui/calendar.tsx`**
+
+```typescript
+// Calendar container background
+className={cn(
+  "bg-zinc-800 group/calendar p-3",  // Changed from bg-background
+  ...
+)}
+
+// Day button hover styling
+className={cn(
+  "data-[selected-single=true]:bg-zinc-600 data-[selected-single=true]:text-white",
+  "hover:!bg-primary hover:!text-primary-foreground",  // Blue hover
+  ...
+)}
+```
+
+**`app/globals.css`** - Updated primary color
+```css
+:root {
+  --primary: #3B82F6;  /* Tailwind blue-500 */
+}
+
+.light {
+  --primary: #3B82F6;
+}
+```
+
+**Visual Changes:**
+- Calendar background: Changed from very dark `bg-background` to `bg-zinc-800`
+- Selected dates: `bg-zinc-600` with white text
+- Hover state: Primary blue (`#3B82F6`) background
+- Better contrast and matches project color scheme
+
+---
+
+### Filter Popover Width Stability
+
+**Problem:** The filter popover width was shrinking when selecting filters (e.g., "All" option had less content), creating an unsettling visual experience.
+
+**Solution:** Added fixed width classes to the popover container.
+
+**`components/Dashboard/PlaylistTable.tsx`**
+```tsx
+<div className="flex flex-col max-h-[70vh] w-80 sm:w-96 rounded-xl ...">
+```
+
+- Mobile: `w-80` (320px)
+- Desktop: `w-96` (384px)
+
+This ensures consistent width regardless of filter content.
+
+---
+
+### Active Filter Pills Repositioning
+
+**Changes:**
+1. Moved filter pills from inline (between search and filter button) to the rightmost side
+2. Removed duplicate filter pills section that was below the header
+3. Made pills more compact with smaller padding and text truncation
+4. Added appropriate icons to each filter type
+
+**Layout Flow:**
+```
+[Search Box] [Filter Button] [Refresh Button] [Active Filter Pills]
+```
+
+**Filter Pills Styling:**
+- Owner filter: Blue theme with user icon
+- Visibility filter: Emerald theme with eye icon  
+- Date filter: Purple theme with calendar icon
+- Each pill shows filter value with X button to remove
+- Hidden on mobile screens (`hidden md:flex`)
+- Text truncated with max-width to prevent overflow
+
+---
+
+### Table Cell Hover Tooltips
+
+**Problem:** Long text in table cells (playlist name, owner, date) was being truncated, making it impossible to see the full content.
+
+**Solution:** Added `title` attributes to truncated cells for native browser tooltips.
+
+**`components/Dashboard/PlaylistTable.tsx`** - Table Row Cells
+
+```tsx
+{/* Playlist Name */}
+<td className="px-2 py-2">
+  <div className="font-medium text-sm truncate" title={item.name}>
+    {item.name}
+  </div>
+</td>
+
+{/* Owner Name */}
+<td className="px-2 py-2">
+  <div className="text-sm truncate" title={item.owner.display_name}>
+    {item.owner.display_name}
+  </div>
+</td>
+
+{/* Created Date */}
+<td className="px-2 py-2">
+  <div className="text-sm" title={item.createdAt ? formatDate(item.createdAt) : undefined}>
+    {item.createdAt ? formatDate(item.createdAt) : "—"}
+  </div>
+</td>
+```
+
+**Benefits:**
+- ✅ Native browser tooltip on hover
+- ✅ No additional JavaScript or CSS needed
+- ✅ Works on all truncated text cells
+- ✅ Improves accessibility
+
+---
+
+### Click-Outside Handling
+
+**Problem:** Clicking on the calendar was closing both the calendar and the filter popover.
+
+**Solution:** Updated click-outside handlers to ignore clicks on the calendar portal.
+
+```typescript
+// In filter popover click-outside handler
+function handleClickOutside(event: MouseEvent) {
+  if (
+    filterPanelRef.current &&
+    !filterPanelRef.current.contains(event.target as Node) &&
+    filterButtonRef.current &&
+    !filterButtonRef.current.contains(event.target as Node) &&
+    !(event.target as Element).closest('[data-calendar-portal]')  // Ignore calendar clicks
+  ) {
+    setShowFilters(false)
+  }
+}
+```
+
+---
+
+### Summary of Files Modified
+
+1. **`components/Dashboard/PlaylistTable.tsx`**
+   - Complete DatePicker rewrite with portal rendering
+   - Viewport positioning algorithm
+   - Filter popover fixed width
+   - Active filter pills repositioned to right side
+   - Table cell title attributes added
+
+2. **`components/ui/calendar.tsx`**
+   - Updated background color to `bg-zinc-800`
+   - Changed selected/hover colors to match project scheme
+   - Added `!important` to hover classes for override
+
+3. **`app/globals.css`**
+   - Changed primary color to `#3B82F6` (blue-500)
+
+---
+
+### Testing Checklist
+
+**DatePicker:**
+- [x] Calendar renders outside popover (no clipping)
+- [x] Positions at top-center of button by default
+- [x] Shows at bottom-center when insufficient space above
+- [x] Stays within viewport boundaries
+- [x] No flickering during playlist date fetching
+- [x] Clicking calendar doesn't close filter popover
+- [x] Clicking outside closes calendar
+
+**Calendar Styling:**
+- [x] Background is zinc-800 (not pitch black)
+- [x] Selected dates show gray background
+- [x] Hover shows blue background
+- [x] Colors match project theme
+
+**Filter Pills:**
+- [x] Pills appear at rightmost side of header
+- [x] No duplicate pills below header
+- [x] Each pill has appropriate icon
+- [x] Colors swapped (visibility=emerald, date=purple)
+- [x] Hidden on mobile
+- [x] Clicking X removes filter
+
+**Table Tooltips:**
+- [x] Playlist name shows tooltip on hover
+- [x] Owner name shows tooltip on hover
+- [x] Date shows tooltip on hover
+- [x] Tooltips appear for truncated text
