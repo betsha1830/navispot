@@ -133,7 +133,7 @@ const COLLABORATION_INDICATORS = [
   'DJ '
 ];
 
-const TITLE_SUFFIX_PATTERN = /[\(\[].*[\)\]].*$|[-–—~/].*$/;
+const TITLE_SUFFIX_PATTERN = /[\(\[].*?[\)\]]\s*$|[-–—~/].*$/;
 
 export function stripTitleSuffix(title: string): string {
   return title.replace(TITLE_SUFFIX_PATTERN, '').trim();

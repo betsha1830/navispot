@@ -516,7 +516,7 @@ The code passes all ESLint checks with the project's configuration. This include
 
 **Status:** Completed
 
-**Last Updated:** January 4, 2026
+**Last Updated:** February 9, 2026
 
 **Update Notes (January 4, 2026):**
 - Added exact title match boost to handle cases where artist names differ significantly
@@ -526,3 +526,8 @@ The code passes all ESLint checks with the project's configuration. This include
 - Added title normalization to handle live recording indicator variations
 - Added debug logging for troubleshooting matching issues
 - Updated testing recommendations to cover all new matching scenarios
+
+**Update Notes (February 9, 2026):**
+- Fixed bug in `stripTitleSuffix()` where greedy regex matching caused titles with parentheses like "(I Just) Died In Your Arms" to be completely stripped to empty string
+- Changed `TITLE_SUFFIX_PATTERN` from `/[\(\[].*[\)\]].*$|[-–—~/].*$/` to `/[\(\[].*?[\)\]]\s*$|[-–—~/].*$/` to use non-greedy matching and properly handle trailing whitespace
+- This fix ensures only suffixes (like " - Remastered 2024") are stripped, not content within the main title
