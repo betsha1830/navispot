@@ -196,6 +196,7 @@ We appreciate all contributions to NaviSpot! Special thanks to:
 
 | Contributor | Contribution | Date |
 |-------------|--------------|------|
+| **[FaKiieZ](https://github.com/FaKiieZ)** | Fixed null track handling and empty track name matching for large playlist exports (1500+ songs) | Feb 2026 |
 | **[WB2024](https://github.com/WB2024)** | Enhanced dashboard filtering: owner filter, visibility filter, and date range filtering with playlist creation date caching | Feb 2026 |
 
 Want to contribute? Check out our [issue tracker](../../issues) for ways to help!
