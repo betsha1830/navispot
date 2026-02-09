@@ -414,6 +414,61 @@ const lenientOptions = {
 
 ## Error Handling
 
+### Invalid Track Data Handling
+
+As of February 2026 (PR #3 by FaKiieZ), the orchestrator now includes robust handling for invalid track data from Spotify:
+
+**Null Track Validation:**
+The `matchTrack()` function validates input before processing:
+
+```typescript
+if (!spotifyTrack || !spotifyTrack.name) {
+  console.warn("Invalid Spotify track encountered:", {
+    track: spotifyTrack,
+    hasName: spotifyTrack?.name ? true : false,
+    id: spotifyTrack?.id,
+    artists: spotifyTrack?.artists,
+  });
+  return {
+    spotifyTrack: spotifyTrack || ({} as SpotifyTrack),
+    navidromeSong: undefined,
+    matchStrategy: "none",
+    matchScore: 0,
+    status: "unmatched",
+  };
+}
+```
+
+**Batch Processing Error Recovery:**
+The `matchTracks()` function wraps individual track matching to prevent export failures:
+
+```typescript
+try {
+  const match = await matchTrack(client, track, options, signal);
+  results.push(match);
+} catch (error) {
+  console.error("Error matching track:", {
+    track,
+    error: error instanceof Error ? error.message : String(error),
+  });
+  results.push({
+    spotifyTrack: track,
+    navidromeSong: undefined,
+    matchStrategy: "none",
+    matchScore: 0,
+    status: "unmatched",
+  });
+}
+```
+
+This ensures that:
+- Large playlist exports (1500+ songs) complete even with null/empty tracks
+- Individual track errors don't halt the entire export process
+- Console warnings provide debugging information for problematic tracks
+- Invalid tracks are marked as "unmatched" and included in export statistics
+
+### Strategy Error Handling
+
 - ISRC/duration matching errors fall through to fuzzy matching
 - Fuzzy matching errors fall through to strict matching
 - Strict matching errors result in unmatched status
@@ -437,6 +492,13 @@ The code passes all ESLint checks with the project's configuration. This include
 **Status:** Completed
 
 **Last Updated:** January 4, 2026
+
+**Update Notes (February 7, 2026):**
+- Added null track validation in `matchTrack()` to handle Spotify API returning null/undefined tracks
+- Added empty track name validation to prevent crashes on tracks with missing metadata
+- Added error recovery in `matchTracks()` to continue export even when individual tracks fail
+- Console warnings now provide debugging info for invalid track data
+- Large playlist exports (1500+ songs) now complete successfully even with problematic tracks
 
 **Update Notes (January 4, 2026):**
 - Implemented ISRC check on search results instead of separate API call (Navidrome API doesn't accept ISRC as search query)
