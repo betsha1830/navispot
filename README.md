@@ -2,6 +2,14 @@
   <img src="public/navispot.png" alt="NaviSpot Logo" width="200">
 </p>
 
+---
+
+## 🤖 AI-Assisted Development Notice
+
+> **This project has been developed with the assistance of various Large Language Models (LLMs) for planning and writing code.** All features and functionalities have been tested to meet the project's requirements and quality standards.
+
+---
+
 # NaviSpot
 
 > Export Spotify playlists to your self-hosted Navidrome music server
