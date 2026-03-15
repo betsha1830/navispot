@@ -4,18 +4,18 @@
 
 ---
 
-## 🤖 AI-Assisted Development Notice
-
-> **This project has been developed with the assistance of various Large Language Models (LLMs) for planning and writing code.** All features and functionalities have been tested to meet the project's requirements and quality standards.
-
----
-
 # NaviSpot
 
 > Export Spotify playlists to your self-hosted Navidrome music server
 
 [![Live Demo](https://img.shields.io/badge/Live%20Demo-navispot.gaga.pro.et-blue?style=flat&logo=vercel)](https://navispot.gaga.pro.et/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+---
+
+## 🤖 AI-Assisted Development Notice
+
+> **This project has been developed with the assistance of various Large Language Models (LLMs) for planning and writing code.** All features and functionalities have been tested to meet the project's requirements and quality standards.
 
 ---
 
