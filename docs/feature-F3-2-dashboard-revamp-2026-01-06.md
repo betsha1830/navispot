@@ -2159,3 +2159,24 @@ No additional styling changes were needed — the existing classes already suppo
 - [ ] Calendar header no longer clips in the portal
 - [ ] Dropdowns work in both light and dark modes
 - [ ] Left/right arrow buttons still function for single-month navigation
+
+### Bug Fix: Date Selection Off-by-One in Negative UTC Timezones
+
+**Problem:** Selecting Jan 1, 2000 would store Dec 31, 1999 for users in negative UTC offset timezones (e.g., UTC-5).
+
+**Root Cause:** The `handleSelect` callback used `selectedDate.toISOString().split("T")[0]` to format the date. `.toISOString()` converts to UTC, so midnight on Jan 1 in a UTC-5 timezone becomes 7:00 PM on Dec 31 UTC, producing `"1999-12-31"`.
+
+**Fix:** Replaced `.toISOString()` with local date component extraction:
+
+```typescript
+// Before (buggy — converts to UTC)
+onChange(selectedDate.toISOString().split("T")[0])
+
+// After (uses local time)
+const year = selectedDate.getFullYear()
+const month = String(selectedDate.getMonth() + 1).padStart(2, '0')
+const day = String(selectedDate.getDate()).padStart(2, '0')
+onChange(`${year}-${month}-${day}`)
+```
+
+`getFullYear()`, `getMonth()`, and `getDate()` all operate in local time, so no timezone shift occurs.
