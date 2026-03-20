@@ -33,7 +33,7 @@ function DatePicker({
     if (isOpen && buttonRef.current) {
       const rect = buttonRef.current.getBoundingClientRect()
       const calendarWidth = 280
-      const calendarHeight = 280
+      const calendarHeight = 320
       const margin = 4
       
       // Center horizontally relative to button
@@ -111,6 +111,7 @@ function DatePicker({
           mode="single"
           selected={date}
           onSelect={handleSelect}
+          captionLayout="dropdown"
           className="rounded-md"
         />
       </div>,

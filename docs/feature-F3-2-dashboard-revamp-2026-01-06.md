@@ -2094,3 +2094,68 @@ function handleClickOutside(event: MouseEvent) {
 - [x] Owner name shows tooltip on hover
 - [x] Date shows tooltip on hover
 - [x] Tooltips appear for truncated text
+
+---
+
+## Calendar Dropdown Navigation (March 20, 2026)
+
+### Problem
+
+The calendar DatePicker only supported month-by-month navigation via left/right arrow buttons. Users who needed to select a date in a different month or year had to click the arrows repeatedly (e.g., 12 clicks to go back one year), creating a poor user experience.
+
+### Solution
+
+Enabled react-day-picker's built-in `captionLayout="dropdown"` mode on the DatePicker's Calendar component. This replaces the static month/year text label with two interactive dropdown selectors — one for month and one for year — allowing users to jump directly to any month and year in a single click.
+
+### Changes Made
+
+**`components/Dashboard/PlaylistTable.tsx`**
+
+1. **Added `captionLayout="dropdown"` to Calendar** (line 114):
+```tsx
+<Calendar
+  mode="single"
+  selected={date}
+  onSelect={handleSelect}
+  captionLayout="dropdown"  // NEW
+  className="rounded-md"
+/>
+```
+
+2. **Increased calendar height estimate** (line 36):
+```typescript
+// Before
+const calendarHeight = 280
+
+// After
+const calendarHeight = 320
+```
+
+The height was increased from 280px to 320px to account for the slightly taller dropdown header compared to the previous text label.
+
+### How It Works
+
+The `captionLayout="dropdown"` prop tells react-day-picker v9 to render the calendar header as two `<select>` dropdowns instead of static text:
+
+- **Month dropdown**: Shows abbreviated month names (Jan, Feb, Mar, ...) — formatted via the existing `formatMonthDropdown` formatter
+- **Year dropdown**: Shows year numbers — automatically populated by react-day-picker based on the current year
+
+Both dropdowns are styled by the existing dropdown CSS classes already defined in `components/ui/calendar.tsx` (lines 72-83):
+
+| Class | Purpose |
+|-------|---------|
+| `dropdowns` | Container for the month and year dropdowns |
+| `dropdown_root` | Wrapper with border, focus ring, and rounded corners |
+| `dropdown` | Hidden overlay select element |
+
+No additional styling changes were needed — the existing classes already support dropdown mode.
+
+### Testing Checklist
+
+- [ ] Month dropdown shows abbreviated month names
+- [ ] Year dropdown shows relevant year range
+- [ ] Selecting a month jumps the calendar to that month
+- [ ] Selecting a year jumps the calendar to that year
+- [ ] Calendar header no longer clips in the portal
+- [ ] Dropdowns work in both light and dark modes
+- [ ] Left/right arrow buttons still function for single-month navigation
