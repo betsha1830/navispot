@@ -417,32 +417,36 @@ export function Dashboard() {
       try {
         spotifyClient.setToken(spotify.token!)
 
-        for (const playlistId of missingIds) {
+        const CONCURRENCY = 3
+        for (let i = 0; i < missingIds.length; i += CONCURRENCY) {
           if (cancelled) break
 
-          try {
-            const createdDate = await spotifyClient.getPlaylistCreatedDate(playlistId)
-            if (!cancelled && createdDate) {
-              setPlaylistCreatedDates((prev: Map<string, string>) => {
-                const next = new Map(prev)
-                next.set(playlistId, createdDate)
-                // Save to cache periodically (every 10 playlists)
-                if (next.size % 10 === 0) {
-                  saveCachedDates(next)
+          const batch = missingIds.slice(i, i + CONCURRENCY)
+          const results = await Promise.all(
+            batch.map(async (playlistId) => {
+              try {
+                const createdDate = await spotifyClient.getPlaylistCreatedDate(playlistId)
+                return { playlistId, createdDate }
+              } catch {
+                return { playlistId, createdDate: undefined }
+              }
+            })
+          )
+
+          if (!cancelled) {
+            setPlaylistCreatedDates((prev: Map<string, string>) => {
+              const next = new Map(prev)
+              for (const { playlistId, createdDate } of results) {
+                if (createdDate) {
+                  next.set(playlistId, createdDate)
                 }
-                return next
-              })
-            }
-          } catch {
-            // Skip playlists that fail (e.g., deleted or access revoked)
+              }
+              saveCachedDates(next)
+              return next
+            })
           }
         }
 
-        // Final save to cache
-        setPlaylistCreatedDates((prev: Map<string, string>) => {
-          saveCachedDates(prev)
-          return prev
-        })
       } catch (err) {
         console.warn("Failed to fetch playlist created dates:", err)
       } finally {

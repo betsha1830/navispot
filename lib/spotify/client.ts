@@ -117,7 +117,8 @@ export class SpotifyClient {
     let offset = 0;
     const limit = 100;
 
-    // Fetch all pages to find the true earliest added_at
+    // Paginate to find the earliest added_at
+    // Tracks are returned newest-first, so stop when a page doesn't improve the result
     while (true) {
       const params = new URLSearchParams({
         fields,
@@ -127,15 +128,18 @@ export class SpotifyClient {
       const response = await this.fetch(`/playlists/${playlistId}/items?${params.toString()}`, signal);
       const data = await response.json();
 
+      let improved = false;
       for (const item of data.items || []) {
         if (item.added_at) {
           if (!earliest || item.added_at < earliest) {
             earliest = item.added_at;
+            improved = true;
           }
         }
       }
 
       if (!data.next) break;
+      if (!improved) break; // All dates on this page are newer — no point continuing
       offset += limit;
     }
 

@@ -49,6 +49,8 @@ Located in `lib/spotify/client.ts`:
 | `getAllPlaylists()` | Fetch all playlists with auto-pagination | ✅ |
 | `getPlaylistTracks(playlistId, limit, offset)` | Fetch paginated playlist tracks | ✅ |
 | `getAllPlaylistTracks(playlistId)` | Fetch all tracks with auto-pagination | ✅ |
+| `getPlaylistCreatedDate(playlistId, signal?)` | Fetch earliest `added_at` for a playlist | ✅ |
+| `getPlaylistCreatedDates(playlistIds, signal?, onProgress?)` | Fetch created dates for multiple playlists (sequential) | ✅ |
 | `refreshAccessToken()` | Refresh expired access token | ❌ |
 | `setToken(token)` | Set the current token | N/A |
 | `getToken()` | Get the current token | N/A |
@@ -91,6 +93,20 @@ The `getAllPlaylists()` and `getAllPlaylistTracks()` methods handle pagination a
 2. Check for `next` property in response
 3. Continue fetching until no more pages
 4. Aggregate all results into single array
+
+## Playlist Created Date Fetching
+
+The Spotify API does not provide a direct playlist creation date. The client approximates this by finding the earliest `added_at` timestamp across all tracks in a playlist.
+
+### `getPlaylistCreatedDate(playlistId, signal?)`
+
+Fetches track pages and returns the earliest `added_at` date as an ISO string. Uses early termination optimization: since tracks are returned newest-first, pagination stops when a page contains no dates older than the current earliest.
+
+### `getPlaylistCreatedDates(playlistIds, signal?, onProgress?)`
+
+Fetches created dates for multiple playlists sequentially. Returns a `Map<string, string>` of playlist ID to earliest date.
+
+Note: The Dashboard does not use this method. It calls `getPlaylistCreatedDate` directly with parallel batches (concurrency of 3) for faster overall throughput.
 
 ## Dependencies
 
