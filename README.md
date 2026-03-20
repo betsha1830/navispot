@@ -142,7 +142,7 @@ If NaviSpot helps you migrate your music library, consider supporting developmen
 | **LTC**        | `ltc1qaf5an5qultyw47xjees3d7uwnext2rszg93njj`                                                     |
 | **XMR**        | `84euv4YWNe4WGBm8hrPWKV8PSQpGvRzsFB9jyWhSCs45Z13mfU8qAyARaiqjc9CPCcSspyprd4Qv1KfbSVaHwxH9HRNmTjC` |
 
-**[❤️ Support on Patreon](https://www.patreon.com/c/betsha)**
+**[❤️ Support on Patreon](https://www.patreon.com/posts/one-time-support-153508783?utm_medium=clipboard_copy&utm_source=copyLink&utm_campaign=postshare_creator&utm_content=join_link)**
 
 Your support helps maintain and improve this open-source project! 🙏
 
