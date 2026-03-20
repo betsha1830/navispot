@@ -8,7 +8,7 @@ export interface PlaylistTableItem {
   name: string;
   images: { url: string }[];
   owner: { display_name: string };
-  tracks: { total: number };
+  items: { total: number };
   snapshot_id: string;
   isLikedSongs: boolean;
   selected: boolean;
@@ -104,7 +104,7 @@ export function TableRow({ playlist, isSelected, onToggle, isExporting = false, 
         </div>
       </td>
       <td className="px-4 py-3 w-[120px] text-sm text-zinc-600 dark:text-zinc-400">
-        {playlist.tracks.total.toLocaleString()} tracks
+        {playlist.items.total.toLocaleString()} tracks
       </td>
       <td className="px-4 py-3 w-[200px]">
         <span className="truncate text-sm text-zinc-600 dark:text-zinc-400 block" title={playlist.owner.display_name}>

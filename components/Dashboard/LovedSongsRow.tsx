@@ -73,7 +73,7 @@ export function LovedSongsRow({ playlist, isSelected, onToggle, isExporting = fa
         </div>
       </td>
       <td className="px-4 py-3 w-[120px] text-sm text-zinc-600 dark:text-zinc-400">
-        {playlist.tracks.total.toLocaleString()} tracks
+        {playlist.items.total.toLocaleString()} tracks
       </td>
       <td className="px-4 py-3 w-[200px]">
         <span className="text-sm text-zinc-600 dark:text-zinc-400">You</span>

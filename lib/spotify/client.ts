@@ -35,7 +35,7 @@ export class SpotifyClient {
   async getPlaylistTracks(playlistId: string, limit: number = 100, offset: number = 0, signal?: AbortSignal): Promise<SpotifyTracksResponse> {
     await spotifyRateLimiter.acquire();
     const params = new URLSearchParams({ limit: limit.toString(), offset: offset.toString() });
-    const response = await this.fetch(`/playlists/${playlistId}/tracks?${params.toString()}`, signal);
+    const response = await this.fetch(`/playlists/${playlistId}/items?${params.toString()}`, signal);
     return response.json();
   }
 
@@ -124,7 +124,7 @@ export class SpotifyClient {
         limit: limit.toString(),
         offset: offset.toString(),
       });
-      const response = await this.fetch(`/playlists/${playlistId}/tracks?${params.toString()}`, signal);
+      const response = await this.fetch(`/playlists/${playlistId}/items?${params.toString()}`, signal);
       const data = await response.json();
 
       for (const item of data.items || []) {

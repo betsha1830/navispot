@@ -16,7 +16,7 @@ Implements the Spotify API client with rate limiting utilities and helper method
 | Requirement | Status | Location |
 |-------------|--------|----------|
 | GET `/v1/me/playlists` endpoint wrapper | ✅ | `client.ts:22-26` |
-| GET `/v1/playlists/{id}/tracks` with pagination | ✅ | `client.ts:28-32` |
+| GET `/v1/playlists/{id}/items` with pagination | ✅ | `client.ts:28-32` |
 | Rate limiting utilities | ✅ | `rate-limiter.ts` |
 
 ## Components

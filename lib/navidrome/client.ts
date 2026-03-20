@@ -162,21 +162,54 @@ export class NavidromeApiClient {
     return `${this.baseUrl}${endpoint}?${queryString}`;
   }
 
-  private async _makeNativeRequest<T>(endpoint: string, params: Record<string, string | number | undefined> = {}, signal?: AbortSignal): Promise<T> {
-    await this._ensureAuthenticated();
-    
-    const url = this._buildNativeUrl(endpoint, params);
-    
-    const headers: Record<string, string> = {
+  private _getNativeHeaders(): Record<string, string> {
+    return {
       'Content-Type': 'application/json',
       'x-nd-authorization': `Bearer ${this._ndToken}`,
       'x-nd-client-unique-id': `${this._ndClientId}`,
     };
+  }
 
-    const response = await fetch(url, {
-      headers,
+  private async _reloginAndSave(): Promise<void> {
+    const result = await this.login(this.username, this.password);
+    if (!result.success) {
+      throw new Error(`Authentication failed: ${result.error}`);
+    }
+    // Update stored credentials so subsequent client instances use the fresh token
+    try {
+      const stored = localStorage.getItem('navispot_navidrome_auth');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        parsed.token = this._ndToken;
+        parsed.clientId = this._ndClientId;
+        localStorage.setItem('navispot_navidrome_auth', JSON.stringify(parsed));
+      }
+    } catch {
+      // localStorage unavailable (SSR) — ignore
+    }
+  }
+
+  private async _makeNativeRequest<T>(endpoint: string, params: Record<string, string | number | undefined> = {}, signal?: AbortSignal): Promise<T> {
+    await this._ensureAuthenticated();
+
+    const url = this._buildNativeUrl(endpoint, params);
+
+    let response = await fetch(url, {
+      headers: this._getNativeHeaders(),
       signal,
     });
+
+    // 401 means token expired — re-login and retry once
+    if (response.status === 401) {
+      this._ndToken = '';
+      this._ndClientId = '';
+      await this._reloginAndSave();
+
+      response = await fetch(url, {
+        headers: this._getNativeHeaders(),
+        signal,
+      });
+    }
 
     if (!response.ok) {
       throw new Error(`HTTP error: ${response.status} ${response.statusText}`);

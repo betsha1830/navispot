@@ -90,7 +90,7 @@ interface SpotifyPlaylist {
   description: string;
   images: { url: string }[];
   owner: { id: string; display_name: string };
-  tracks: { total: number };
+  items: { total: number };
   snapshot_id: string;
 }
 ```
@@ -389,7 +389,7 @@ When export begins, the Playlist Data Table transforms to show real-time progres
 |---------|-----------|--------------|
 | **F1.1 Project Setup** | - Configure TypeScript, ESLint, Tailwind<br>- Create folder structure<br>- Set up environment variables template | None |
 | **F1.2 Spotify OAuth Client** | - Implement authorization URL generation<br>- Handle callback and token exchange<br>- Token refresh logic<br>- Store encrypted tokens in localStorage | F1.1 |
-| **F1.3 Spotify API Client** | - GET `/v1/me/playlists` endpoint wrapper<br>- GET `/v1/playlists/{id}/tracks` with pagination<br>- Rate limiting utilities | F1.2 |
+| **F1.3 Spotify API Client** | - GET `/v1/me/playlists` endpoint wrapper<br>- GET `/v1/playlists/{id}/items` with pagination<br>- Rate limiting utilities | F1.2 |
 | **F1.4 Navidrome API Client** | - Basic Auth header generation<br>- Subsonic `ping` endpoint test<br>- `getPlaylists` wrapper<br>- `createPlaylist` / `updatePlaylist` wrappers | F1.1 |
 | **F1.5 Search Functionality** | - Implement `search3` endpoint wrapper<br>- Song search utility function | F1.4 |
 | **F1.6 Auth Context** | - Create AuthContext for global state<br>- Persist Spotify tokens to localStorage<br>- Persist Navidrome credentials to localStorage<br>- Provide auth status and methods to components | F1.2, F1.4 |

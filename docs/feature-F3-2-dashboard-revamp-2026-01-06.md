@@ -409,7 +409,7 @@ interface PlaylistTableItem {
   name: string;
   images: { url: string }[];
   owner: { display_name: string };
-  tracks: { total: number };
+  items: { total: number };
   snapshot_id: string;
   isLikedSongs: boolean;
   selected: boolean;
@@ -754,14 +754,14 @@ Spotify server may take time to update snapshot_id after content changes:
 **Implementation:**
 ```typescript
 // Capture both old track counts AND snapshot IDs
-const oldTrackCounts = new Map(playlists.map(p => [p.id, p.tracks.total]))
+const oldTrackCounts = new Map(playlists.map(p => [p.id, p.items.total]))
 const oldSnapshots = new Map(playlists.map(p => [p.id, p.snapshot_id]))
 
 // Compare both - playlist changed if EITHER is different
 const changedPlaylistIds = fetchedPlaylists
   .filter(p => oldSnapshots.has(p.id))
   .filter(p => {
-    const trackCountChanged = oldTrackCounts.get(p.id) !== p.tracks.total
+    const trackCountChanged = oldTrackCounts.get(p.id) !== p.items.total
     const snapshotChanged = oldSnapshots.get(p.id) !== p.snapshot_id
     return trackCountChanged || snapshotChanged
   })

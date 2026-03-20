@@ -15,7 +15,7 @@ This feature was implemented as part of **F1.3 Spotify API Client** in `lib/spot
 | Requirement | Status | Location |
 |-------------|--------|----------|
 | Fetch all user playlists from Spotify | ✅ | `client.ts:54-68` (getAllPlaylists) |
-| Calculate total tracks per playlist | ✅ | `types/spotify.ts:17` (tracks.total) |
+| Calculate total tracks per playlist | ✅ | `types/spotify.ts:17` (items.total) |
 | Handle pagination for large playlists | ✅ | `client.ts:54-68` (while loop with offset) |
 
 ## Components
@@ -60,7 +60,7 @@ interface SpotifyPlaylist {
   description: string;
   images: { url: string }[];
   owner: { id: string; display_name: string };
-  tracks: { total: number };  // Total tracks count
+  items: { total: number };  // Total tracks count
   snapshot_id: string;
 }
 ```
@@ -76,7 +76,7 @@ async function fetchAllPlaylists() {
   const playlists = await spotifyClient.getAllPlaylists();
 
   playlists.forEach(playlist => {
-    console.log(`"${playlist.name}" - ${playlist.tracks.total} tracks`);
+    console.log(`"${playlist.name}" - ${playlist.items.total} tracks`);
   });
 
   return playlists;
@@ -95,7 +95,7 @@ async function fetchAllPlaylists() {
 
 The total tracks per playlist is provided by Spotify's API:
 
-- Accessed via `playlist.tracks.total`
+- Accessed via `playlist.items.total`
 - Includes all tracks in the playlist
 - Does not require additional API calls
 - Real-time count from Spotify's database

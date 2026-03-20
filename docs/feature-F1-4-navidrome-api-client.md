@@ -410,3 +410,44 @@ const match = songs.find((song) => song.isrc?.includes(isrc));
 ```
 
 This ensures ISRC-based track matching works with Navidrome's actual API response format.
+
+### March 2026 - Automatic Token Refresh on 401
+
+**Problem:** Navidrome tokens expire (typically after ~24 hours). When a stored token expired, `_ensureAuthenticated()` only checked if the token string was non-empty — it never validated against the server. Requests would fail with 401 Unauthorized with no recovery.
+
+**Changes:**
+
+1. **Added `_getNativeHeaders()` helper** — Extracts header construction into a reusable method for both initial and retry requests.
+
+2. **Added `_reloginAndSave()` method** — Forces re-authentication and persists the fresh token to localStorage so subsequent client instances use it:
+   ```typescript
+   private async _reloginAndSave(): Promise<void> {
+     const result = await this.login(this.username, this.password);
+     if (!result.success) {
+       throw new Error(`Authentication failed: ${result.error}`);
+     }
+     // Update stored credentials
+     const stored = localStorage.getItem('navispot_navidrome_auth');
+     if (stored) {
+       const parsed = JSON.parse(stored);
+       parsed.token = this._ndToken;
+       parsed.clientId = this._ndClientId;
+       localStorage.setItem('navispot_navidrome_auth', JSON.stringify(parsed));
+     }
+   }
+   ```
+
+3. **Added 401-retry logic to `_makeNativeRequest()`** — On 401 response, clears the stale token, re-authenticates, and retries the request once:
+   ```typescript
+   if (response.status === 401) {
+     this._ndToken = '';
+     this._ndClientId = '';
+     await this._reloginAndSave();
+     response = await fetch(url, { headers: this._getNativeHeaders(), signal });
+   }
+   ```
+
+**Benefits:**
+- Transparent token refresh — users don't see 401 errors
+- Fresh tokens persisted to localStorage for subsequent sessions
+- Follows the same pattern used by the Spotify client's 401 handling

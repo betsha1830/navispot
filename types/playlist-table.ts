@@ -3,7 +3,7 @@ export interface PlaylistTableItem {
   name: string;
   images: { url: string }[];
   owner: { display_name: string };
-  tracks: { total: number };
+  items: { total: number };
   snapshot_id: string;
   isLikedSongs: boolean;
   selected: boolean;

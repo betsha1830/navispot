@@ -56,7 +56,7 @@ interface PlaylistItem {
   description?: string
   images: { url: string }[]
   owner: { id: string; display_name: string }
-  tracks: { total: number }
+  items: { total: number }
   snapshot_id?: string
   isLikedSongs?: boolean
 }
@@ -71,7 +71,7 @@ const LIKED_SONGS_ITEM: PlaylistItem = {
     },
   ],
   owner: { id: "user", display_name: "You" },
-  tracks: { total: 0 },
+  items: { total: 0 },
   isLikedSongs: true,
 }
 
@@ -213,7 +213,7 @@ export function Dashboard() {
 
       // Capture old track counts AND snapshot IDs for comparison
       const oldTrackCounts = new Map(
-        playlists.map(p => [p.id, p.tracks.total])
+        playlists.map(p => [p.id, p.items.total])
       )
       const oldSnapshots = new Map(
         playlists.map(p => [p.id, p.snapshot_id])
@@ -225,7 +225,7 @@ export function Dashboard() {
       const changedPlaylistIds = fetchedPlaylists
         .filter(p => oldSnapshots.has(p.id))
         .filter(p => {
-          const trackCountChanged = oldTrackCounts.get(p.id) !== p.tracks.total
+          const trackCountChanged = oldTrackCounts.get(p.id) !== p.items.total
           const snapshotChanged = oldSnapshots.get(p.id) !== p.snapshot_id
           return trackCountChanged || snapshotChanged
         })
@@ -331,7 +331,7 @@ export function Dashboard() {
         name: playlist.name,
         images: playlist.images,
         owner: { display_name: playlist.owner.display_name },
-        tracks: playlist.tracks,
+        items: playlist.items,
         snapshot_id: playlist.snapshot_id || "",
         isLikedSongs: false,
         selected: selectedIds.has(playlist.id),
@@ -353,7 +353,7 @@ export function Dashboard() {
       name: "Liked Songs",
       images: [{ url: "" }],
       owner: { display_name: "You" },
-      tracks: { total: likedSongsCount },
+      items: { total: likedSongsCount },
       snapshot_id: "",
       isLikedSongs: true,
       selected: selectedIds.has(LIKED_SONGS_ID),
@@ -486,7 +486,7 @@ export function Dashboard() {
         selectedPlaylists.push({
           id: p.id,
           name: p.name,
-          total: p.tracks.total,
+          total: p.items.total,
           matched: cachedData?.statistics.matched ?? 0,
           unmatched: cachedData?.statistics.unmatched ?? 0,
           exported: cachedData?.statistics.matched ?? 0,
@@ -689,7 +689,7 @@ export function Dashboard() {
           comparison = a.name.localeCompare(b.name)
           break
         case "tracks":
-          comparison = a.tracks.total - b.tracks.total
+          comparison = a.items.total - b.items.total
           break
         case "owner":
           comparison = a.owner.display_name.localeCompare(b.owner.display_name)
@@ -782,7 +782,7 @@ export function Dashboard() {
     if (hasLikedSongs) {
       itemsToExport.push({
         ...LIKED_SONGS_ITEM,
-        tracks: { total: likedSongsCount },
+      items: { total: likedSongsCount },
       })
     }
     itemsToExport.push(...selectedPlaylists)
@@ -808,7 +808,7 @@ export function Dashboard() {
         unmatched: 0,
         exported: 0,
         failed: 0,
-        total: item.tracks.total,
+        total: item.items.total,
         status: "pending" as const,
         progress: 0,
       })),
@@ -1426,7 +1426,7 @@ export function Dashboard() {
     playlists
       .filter((p) => selectedIds.has(p.id))
       .forEach((p) => {
-        result.push({ name: p.name, trackCount: p.tracks.total })
+        result.push({ name: p.name, trackCount: p.items.total })
       })
 
     return result
