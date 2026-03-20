@@ -2180,3 +2180,67 @@ onChange(`${year}-${month}-${day}`)
 ```
 
 `getFullYear()`, `getMonth()`, and `getDate()` all operate in local time, so no timezone shift occurs.
+
+---
+
+## Date Filter Progress & Count Fixes (March 20, 2026)
+
+### Problem
+
+Two issues with the date filter in the playlist table:
+
+1. **Progress indicator stuck at "0/N":** The spinner and "X/Y" counter next to "Date Range" in the filter popover always showed `0/N`, never updating as dates loaded.
+2. **Filter count not updating:** The "X of Y playlists" count in the filter popover footer didn't update when playlist created dates loaded progressively in the background while a date filter was active.
+
+### Root Causes
+
+#### Issue 1: `datesLoadedCount` Never Passed
+
+**`components/Dashboard/PlaylistTable.tsx`** defined `datesLoadedCount` as an optional prop (line 185) defaulting to `0` (line 289), but **`components/Dashboard/Dashboard.tsx`** never passed it. The spinner always showed `0/{totalCount - 1}`.
+
+#### Issue 2: `filteredItems` Missing Dependency
+
+The `filteredItems` useMemo in Dashboard didn't include `playlistCreatedDates` in its dependency array. When dates loaded progressively:
+
+1. `playlistCreatedDates` updated → `tableItems` updated (it depends on `playlistCreatedDates`)
+2. But `filteredItems` didn't explicitly depend on `playlistCreatedDates`
+3. Items with newly loaded dates that matched the filter weren't reflected in the count
+
+### Changes Made
+
+**`components/Dashboard/Dashboard.tsx`**
+
+1. **Added `datesLoadedCount` state** (line 137):
+```typescript
+const [datesLoadedCount, setDatesLoadedCount] = useState(0)
+```
+
+2. **Set count from cached dates** (line 406):
+```typescript
+if (cachedDates.size > 0) {
+  setPlaylistCreatedDates(cachedDates)
+  setDatesLoadedCount(cachedDates.size)
+}
+```
+
+3. **Increment count after each API batch** (line 439):
+```typescript
+const newDatesInBatch = results.filter(r => r.createdDate).length
+setDatesLoadedCount(prev => prev + newDatesInBatch)
+```
+
+4. **Pass to PlaylistTable** (line 1560):
+```typescript
+datesLoadedCount={datesLoadedCount}
+```
+
+5. **Added `playlistCreatedDates` to `filteredItems` dependency array** (line 708):
+```typescript
+}, [tableItems, searchQuery, sortColumn, sortDirection, ownerFilter, visibilityFilter, dateAfterFilter, dateBeforeFilter, playlistCreatedDates])
+```
+
+### Result
+
+- Progress indicator now shows actual loaded count (e.g., "15/50") as dates fetch progressively
+- Spinner stops when all dates are loaded
+- Filter count ("X of Y playlists") updates correctly when dates load while a date filter is active

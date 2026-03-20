@@ -134,6 +134,7 @@ export function Dashboard() {
   >(new Map())
   const [playlistCreatedDates, setPlaylistCreatedDates] = useState<Map<string, string>>(new Map())
   const [fetchingDates, setFetchingDates] = useState(false)
+  const [datesLoadedCount, setDatesLoadedCount] = useState(0)
 
   const isExportingRef = useRef(false)
   const abortControllerRef = useRef<AbortController | null>(null)
@@ -403,6 +404,7 @@ export function Dashboard() {
       const cachedDates = loadCachedDates()
       if (cachedDates.size > 0) {
         setPlaylistCreatedDates(cachedDates)
+        setDatesLoadedCount(cachedDates.size)
       }
 
       // Find playlists that still need dates
@@ -434,6 +436,7 @@ export function Dashboard() {
           )
 
           if (!cancelled) {
+            const newDatesInBatch = results.filter(r => r.createdDate).length
             setPlaylistCreatedDates((prev: Map<string, string>) => {
               const next = new Map(prev)
               for (const { playlistId, createdDate } of results) {
@@ -444,6 +447,7 @@ export function Dashboard() {
               saveCachedDates(next)
               return next
             })
+            setDatesLoadedCount(prev => prev + newDatesInBatch)
           }
         }
 
@@ -703,7 +707,7 @@ export function Dashboard() {
     })
 
     return result
-  }, [tableItems, searchQuery, sortColumn, sortDirection, ownerFilter, visibilityFilter, dateAfterFilter, dateBeforeFilter])
+  }, [tableItems, searchQuery, sortColumn, sortDirection, ownerFilter, visibilityFilter, dateAfterFilter, dateBeforeFilter, playlistCreatedDates])
 
   const handleSort = (column: "name" | "tracks" | "owner") => {
     if (sortColumn === column) {
@@ -1551,6 +1555,7 @@ export function Dashboard() {
       hasActiveFilters={hasActiveFilters}
       onClearAllFilters={clearAllFilters}
       fetchingDates={fetchingDates}
+      datesLoadedCount={datesLoadedCount}
       totalCount={tableItems.length}
     />
   )
