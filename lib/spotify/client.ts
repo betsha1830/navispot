@@ -1,4 +1,4 @@
-import { SpotifyPlaylistsResponse, SpotifyTracksResponse, SpotifyUser, SpotifyToken, SpotifyPlaylist, SpotifyPlaylistTrack, SpotifySavedTracksResponse, SpotifySavedTrack } from '@/types';
+import { SpotifyPlaylistsResponse, SpotifyTracksResponse, SpotifyUser, SpotifyToken, SpotifyPlaylist, SpotifyPlaylistTrack, SpotifySavedTracksResponse, SpotifySavedTrack, SpotifyPlaylistTrackItem } from '@/types';
 import { isTokenExpired } from './token-storage';
 import { SPOTIFY_STORAGE_KEY } from '@/types/auth-context';
 import { spotifyRateLimiter } from './rate-limiter';
@@ -7,6 +7,17 @@ const SPOTIFY_API_BASE = 'https://api.spotify.com/v1';
 
 export class SpotifyClient {
   private token: SpotifyToken | null = null;
+
+  private async parseApiError(response: Response): Promise<string> {
+    try {
+      const data = await response.clone().json() as {
+        error?: { message?: string };
+      };
+      return data.error?.message || response.statusText || 'Unknown Spotify API error';
+    } catch {
+      return response.statusText || 'Unknown Spotify API error';
+    }
+  }
 
   setToken(token: SpotifyToken): void {
     this.token = token;
@@ -36,6 +47,10 @@ export class SpotifyClient {
     await spotifyRateLimiter.acquire();
     const params = new URLSearchParams({ limit: limit.toString(), offset: offset.toString() });
     const response = await this.fetch(`/playlists/${playlistId}/items?${params.toString()}`, signal);
+    if (!response.ok) {
+      const message = await this.parseApiError(response);
+      throw new Error(`Spotify playlist tracks request failed (${response.status}): ${message}`);
+    }
     return response.json();
   }
 
@@ -45,11 +60,32 @@ export class SpotifyClient {
     const limit = 100;
 
     while (true) {
-      const response = await this.getPlaylistTracks(playlistId, limit, offset, signal);
-      allTracks.push(...response.items);
+      try {
+        const response = await this.getPlaylistTracks(playlistId, limit, offset, signal);
+        const normalized = (response.items || [])
+          .map((entry: SpotifyPlaylistTrackItem): SpotifyPlaylistTrack | null => {
+            const track = entry.track || entry.item;
+            if (!track) return null;
+            return {
+              ...entry,
+              track,
+              added_at: entry.added_at || '',
+            };
+          })
+          .filter((entry): entry is SpotifyPlaylistTrack => entry !== null);
+        allTracks.push(...normalized);
 
-      if (!response.next) break;
-      offset += limit;
+        if (!response.next) break;
+        offset += limit;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        // Spotify can return 403 for unreadable playlists in the user's list.
+        // Return an empty list so the dashboard can keep rendering.
+        if (message.includes('(403)')) {
+          return [];
+        }
+        throw error;
+      }
     }
 
     return allTracks;
@@ -62,6 +98,10 @@ export class SpotifyClient {
       params.append('_t', Date.now().toString());
     }
     const response = await this.fetch(`/me/tracks?${params.toString()}`, signal, {}, bypassCache);
+    if (!response.ok) {
+      const message = await this.parseApiError(response);
+      throw new Error(`Spotify saved tracks request failed (${response.status}): ${message}`);
+    }
     return response.json();
   }
 
@@ -85,6 +125,10 @@ export class SpotifyClient {
     await spotifyRateLimiter.acquire();
     const url = bypassCache ? `/me/tracks?limit=1&_t=${Date.now()}` : '/me/tracks?limit=1';
     const response = await this.fetch(url, signal, {}, bypassCache);
+    if (!response.ok) {
+      const message = await this.parseApiError(response);
+      throw new Error(`Spotify saved tracks count request failed (${response.status}): ${message}`);
+    }
     const data: SpotifySavedTracksResponse = await response.json();
     return data.total;
   }
@@ -126,6 +170,10 @@ export class SpotifyClient {
         offset: offset.toString(),
       });
       const response = await this.fetch(`/playlists/${playlistId}/items?${params.toString()}`, signal);
+      if (!response.ok) {
+        const message = await this.parseApiError(response);
+        throw new Error(`Spotify playlist date request failed (${response.status}): ${message}`);
+      }
       const data = await response.json();
 
       let improved = false;
