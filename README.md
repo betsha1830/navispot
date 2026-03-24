@@ -87,8 +87,8 @@ Unmatched tracks can be exported as JSON for later addition to Navidrome.
 
 ```bash
 # Clone & install
-git clone https://github.com/yourusername/navispot-plist.git
-cd navispot-plist
+git clone https://github.com/yourusername/navispot.git
+cd navispot
 bun install
 
 # Configure
