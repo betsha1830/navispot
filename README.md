@@ -87,8 +87,8 @@ Unmatched tracks can be exported as JSON for later addition to Navidrome.
 
 ```bash
 # Clone & install
-git clone https://github.com/yourusername/navispot-plist.git
-cd navispot-plist
+git clone https://github.com/betsha1830/navispot.git
+cd navispot
 bun install
 
 # Configure
@@ -102,8 +102,10 @@ bun dev
 **Spotify Setup:**
 
 1. Create app at [Spotify Developer Dashboard](https://developer.spotify.com/dashboard)
-2. Add `http://localhost:3000/api/auth/callback` to Redirect URIs
-3. Copy Client ID & Secret to `.env.local`
+2. Add one of the following as your Redirect URI. or to Redirect URIs. Spotify only allows the following loopback addresses: `http://127.0.0.1:PORT` or `http://[::1]:PORT`
+  1. localhost: `http://127.0.0.1:3000/api/auth/callback`
+  2. Remote host: `https://your-domain.com/api/auth/callback`
+4. Copy Client ID & Secret to `.env.local`
 
 ---
 
@@ -118,8 +120,8 @@ docker compose up -d
 **Production Variables:**
 
 ```env
-SPOTIFY_REDIRECT_URI=https://your-domain.com/api/auth/callback
-NEXT_PUBLIC_APP_URL=https://your-domain.com
+SPOTIFY_REDIRECT_URI=https://your-domain.com/api/auth/callback # localhost: http://127.0.0.1:3000/api/auth/callback
+NEXT_PUBLIC_APP_URL=https://your-domain.com #localhost: http://127.0.0.1:3000
 ```
 
 Update Spotify Dashboard with your production redirect URI.
