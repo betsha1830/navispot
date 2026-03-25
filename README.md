@@ -206,6 +206,7 @@ We appreciate all contributions to NaviSpot!
 
 <a href="https://github.com/FaKiieZ"><img src="https://github.com/FaKiieZ.png" width="50" height="50" alt="FaKiieZ" style="border-radius: 50%; margin: 5px;"></a>
 <a href="https://github.com/WB2024"><img src="https://github.com/WB2024.png" width="50" height="50" alt="WB2024" style="border-radius: 50%; margin: 5px;"></a>
+<a href="https://github.com/drunkrhin0"><img src="https://github.com/drunkrhin0.png" width="50" height="50" alt="drunkrhin0" style="border-radius: 50%; margin: 5px;"></a>
 
 Want to contribute? Check out our [issue tracker](../../issues) for ways to help!
 
