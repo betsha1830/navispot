@@ -91,6 +91,59 @@
   }
 }
 
+@keyframes heartbeat {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  14% {
+    transform: scale(1.15);
+  }
+  28% {
+    transform: scale(1);
+  }
+  42% {
+    transform: scale(1.1);
+  }
+  56% {
+    transform: scale(1);
+  }
+}
+
+.support-heartbeat img {
+  animation: heartbeat 2.5s ease-in-out infinite;
+}
+
+.support-popup-enter {
+  animation: supportPopupIn 0.25s ease-out forwards;
+}
+
+@keyframes supportPopupIn {
+  0% {
+    opacity: 0;
+    transform: translateY(12px) scale(0.95);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.support-crypto-enter {
+  animation: supportCryptoIn 0.2s ease-out forwards;
+}
+
+@keyframes supportCryptoIn {
+  0% {
+    opacity: 0;
+    max-height: 0;
+  }
+  100% {
+    opacity: 1;
+    max-height: 13rem;
+  }
+}
+
 :root {
   --radius: 0.625rem;
   --background: oklch(0.141 0.005 285.823);
