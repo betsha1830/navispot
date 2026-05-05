@@ -5,6 +5,7 @@ import Image from "next/image"
 import HeartIcon from "@/public/heart.svg"
 import PatreonIcon from "@/public/patreon.svg"
 import BitcoinIcon from "@/public/bitcoin.svg"
+import { markSupportBubbleShown } from "@/lib/support/export-tracker"
 
 const PATREON_URL =
   "https://www.patreon.com/posts/one-time-support-153508783?utm_medium=clipboard_copy&utm_source=copyLink&utm_campaign=postshare_creator&utm_content=join_link"
@@ -88,6 +89,16 @@ export function SupportBubble() {
       document.removeEventListener("keydown", handleEscape)
     }
   }, [isOpen, handleClose])
+
+  useEffect(() => {
+    function handleShowSupport() {
+      setShowCrypto(false)
+      setIsOpen(true)
+      markSupportBubbleShown()
+    }
+    window.addEventListener("navispot-show-support", handleShowSupport)
+    return () => window.removeEventListener("navispot-show-support", handleShowSupport)
+  }, [])
 
   return (
     <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end gap-3">

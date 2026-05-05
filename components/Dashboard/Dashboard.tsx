@@ -25,6 +25,7 @@ import {
   Song,
 } from "@/components/Dashboard/SongsPanel"
 import { ProgressState } from "@/components/ProgressTracker"
+import { incrementExportCount, shouldShowSupportBubble } from "@/lib/support/export-tracker"
 import {
   createBatchMatcher,
   BatchMatcherOptions,
@@ -803,6 +804,13 @@ export function Dashboard() {
     setIsExporting(true)
     setShowConfirmation(false)
     setError(null)
+
+    const newCount = incrementExportCount()
+    if (newCount >= 5 && shouldShowSupportBubble()) {
+      setTimeout(() => {
+        window.dispatchEvent(new CustomEvent("navispot-show-support"))
+      }, 1500)
+    }
 
     const abortController = new AbortController()
     abortControllerRef.current = abortController
