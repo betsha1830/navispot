@@ -7,8 +7,7 @@ import PatreonIcon from "@/public/patreon.svg"
 import BitcoinIcon from "@/public/bitcoin.svg"
 import { markSupportBubbleShown } from "@/lib/support/export-tracker"
 
-const PATREON_URL =
-  "https://www.patreon.com/posts/one-time-support-153508783?utm_medium=clipboard_copy&utm_source=copyLink&utm_campaign=postshare_creator&utm_content=join_link"
+const PATREON_URL = "https://www.patreon.com/667702/join"
 
 const CRYPTO_ADDRESSES: Record<string, string> = {
   BTC: "bc1q8madmx95n2ve8e7xr38d2fyldafxjg25ffeuts",
