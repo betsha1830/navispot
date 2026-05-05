@@ -159,8 +159,9 @@ export function SupportBubble() {
                   we&apos;ve built.
                 </p>
                 <p>
-                  If NaviSpot has helped you, consider a donation to help it keep
-                  growing. Even a small contribution goes a long way.
+                  If NaviSpot has helped you, consider making a donation to help it
+                  keep growing. Even a small contribution goes a long way or taking
+                  a minute to star the project on GitHub is a huge help!
                 </p>
                 <p className="text-zinc-400">
                   Your support is deeply appreciated. ❤️
