@@ -154,30 +154,38 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
           </button>
         </div>
 
-        <div className="flex flex-col sm:flex-row min-h-[20rem]">
-          <nav
-            aria-label="Settings sections"
-            className="sm:w-48 sm:border-r border-b sm:border-b-0 border-zinc-200 dark:border-zinc-800 p-3 bg-zinc-50 dark:bg-zinc-950/50"
-          >
-            <ul className="flex sm:flex-col gap-1">
-              <li>
-                <button
-                  onClick={() => setActiveSection("data")}
-                  className={`w-full text-left px-3 py-2 rounded-md text-sm font-medium transition-colors cursor-pointer ${
-                    activeSection === "data"
-                      ? "bg-zinc-200 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100"
-                      : "text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800/50"
-                  }`}
-                >
-                  Data
-                </button>
-              </li>
-            </ul>
-          </nav>
+        <div className="flex flex-col min-h-[20rem]">
+          <div className="px-6 pt-5">
+            <div
+              role="tablist"
+              aria-label="Settings sections"
+              className="inline-flex items-center gap-1 p-1 -ml-1 rounded-lg bg-zinc-100 dark:bg-zinc-800/60"
+            >
+              <button
+                role="tab"
+                aria-selected={activeSection === "data"}
+                aria-controls="settings-panel-data"
+                id="settings-tab-data"
+                onClick={() => setActiveSection("data")}
+                className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all cursor-pointer ${
+                  activeSection === "data"
+                    ? "bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 shadow-sm"
+                    : "text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100"
+                }`}
+              >
+                Data
+              </button>
+            </div>
+          </div>
 
-          <div className="flex-1 p-6">
+          <div className="flex-1 px-6 pt-5 pb-6">
             {activeSection === "data" && (
-              <div className="space-y-6">
+              <div
+                role="tabpanel"
+                id="settings-panel-data"
+                aria-labelledby="settings-tab-data"
+                className="space-y-6"
+              >
                 <div>
                   <h3 className="text-base font-semibold text-zinc-900 dark:text-zinc-100">
                     Data
