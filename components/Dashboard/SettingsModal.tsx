@@ -3,14 +3,20 @@
 import React, { useState } from "react"
 import { NavidromeApiClient } from "@/lib/navidrome/client"
 import { useAuth } from "@/lib/auth/auth-context"
+import {
+  DashboardLayout,
+  DASHBOARD_LAYOUT_OPTIONS,
+} from "@/lib/layout/dashboard-layout"
 
 interface SettingsModalProps {
   isOpen: boolean
   onClose: () => void
   onLikedSongsCacheInvalidated?: () => void
+  layout: DashboardLayout
+  onLayoutChange: (layout: DashboardLayout) => void
 }
 
-type SettingsSection = "data"
+type SettingsSection = "data" | "layout"
 
 interface UnstarProgress {
   processed: number
@@ -27,6 +33,8 @@ export function SettingsModal({
   isOpen,
   onClose,
   onLikedSongsCacheInvalidated,
+  layout,
+  onLayoutChange,
 }: SettingsModalProps) {
   const { navidrome } = useAuth()
   const [activeSection, setActiveSection] = useState<SettingsSection>("data")
@@ -185,6 +193,20 @@ export function SettingsModal({
               >
                 Data
               </button>
+              <button
+                role="tab"
+                aria-selected={activeSection === "layout"}
+                aria-controls="settings-panel-layout"
+                id="settings-tab-layout"
+                onClick={() => setActiveSection("layout")}
+                className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all cursor-pointer ${
+                  activeSection === "layout"
+                    ? "bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 shadow-sm"
+                    : "text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100"
+                }`}
+              >
+                Layout
+              </button>
             </div>
           </div>
 
@@ -293,6 +315,69 @@ export function SettingsModal({
                 </div>
               </div>
             )}
+
+            {activeSection === "layout" && (
+              <div
+                role="tabpanel"
+                id="settings-panel-layout"
+                aria-labelledby="settings-tab-layout"
+                className="space-y-5"
+              >
+                <div>
+                  <h3 className="text-base font-semibold text-zinc-900 dark:text-zinc-100">
+                    Layout
+                  </h3>
+                  <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
+                    Choose how the three tables are arranged on the dashboard.
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  {DASHBOARD_LAYOUT_OPTIONS.map((option) => {
+                    const isSelected = layout === option.id
+                    return (
+                      <button
+                        key={option.id}
+                        type="button"
+                        role="radio"
+                        aria-checked={isSelected}
+                        onClick={() => onLayoutChange(option.id)}
+                        className={`group text-left rounded-lg border p-3 transition-all cursor-pointer ${
+                          isSelected
+                            ? "border-green-500 dark:border-green-500 ring-2 ring-green-500/30 bg-green-50/50 dark:bg-green-950/20"
+                            : "border-zinc-200 dark:border-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800/50"
+                        }`}
+                      >
+                        <div className="aspect-[4/3] w-full rounded-md bg-zinc-100 dark:bg-zinc-800/60 p-2 mb-2">
+                          <LayoutPreview id={option.id} highlighted={isSelected} />
+                        </div>
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-sm font-medium text-zinc-900 dark:text-zinc-100">
+                            {option.name}
+                          </span>
+                          {isSelected && (
+                            <svg
+                              className="h-4 w-4 text-green-600 dark:text-green-400 shrink-0"
+                              fill="currentColor"
+                              viewBox="0 0 20 20"
+                            >
+                              <path
+                                fillRule="evenodd"
+                                d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                                clipRule="evenodd"
+                              />
+                            </svg>
+                          )}
+                        </div>
+                        <p className="mt-1 text-xs text-zinc-600 dark:text-zinc-400 leading-snug">
+                          {option.description}
+                        </p>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -338,6 +423,49 @@ export function SettingsModal({
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+interface LayoutPreviewProps {
+  id: DashboardLayout
+  highlighted: boolean
+}
+
+function LayoutPreview({ id, highlighted }: LayoutPreviewProps) {
+  const cellBase = "rounded-sm"
+  const cellColor = highlighted
+    ? "bg-green-500/70 dark:bg-green-400/70"
+    : "bg-zinc-300 dark:bg-zinc-600"
+  const muted = highlighted
+    ? "bg-green-500/30 dark:bg-green-400/30"
+    : "bg-zinc-300/60 dark:bg-zinc-600/60"
+
+  if (id === "default") {
+    return (
+      <div className="h-full w-full flex flex-col gap-1">
+        <div className="h-[40%] flex gap-1">
+          <div className={`${cellBase} ${cellColor} flex-1`} />
+          <div className={`${cellBase} ${cellColor} flex-1`} />
+        </div>
+        <div className={`${cellBase} ${cellColor} flex-1`} />
+      </div>
+    )
+  }
+
+  if (id === "horizontal") {
+    return (
+      <div className="h-full w-full flex flex-col gap-1">
+        <div className={`${cellBase} ${cellColor} h-[40%]`} />
+        <div className={`${cellBase} ${cellColor} flex-1`} />
+      </div>
+    )
+  }
+
+  return (
+    <div className="h-full w-full flex gap-1">
+      <div className={`${cellBase} ${cellColor} w-1/2`} />
+      <div className={`${cellBase} ${cellColor} w-1/2`} />
     </div>
   )
 }

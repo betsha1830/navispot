@@ -38,6 +38,11 @@ import {
 } from "@/lib/export/playlist-exporter"
 import { createFavoritesExporter } from "@/lib/export/favorites-exporter"
 import {
+  DashboardLayout,
+  loadDashboardLayout,
+  saveDashboardLayout,
+} from "@/lib/layout/dashboard-layout"
+import {
   loadPlaylistExportData,
   savePlaylistExportData,
   getAllExportData,
@@ -101,6 +106,9 @@ export function Dashboard() {
   const [isExporting, setIsExporting] = useState(false)
   const [showConfirmation, setShowConfirmation] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
+  const [layout, setLayout] = useState<DashboardLayout>(() =>
+    loadDashboardLayout(),
+  )
   const [currentUnmatchedPlaylistId, setCurrentUnmatchedPlaylistId] = useState<
     string | null
   >(null)
@@ -1477,6 +1485,11 @@ export function Dashboard() {
     })
   }, [])
 
+  const handleLayoutChange = useCallback((next: DashboardLayout) => {
+    setLayout(next)
+    saveDashboardLayout(next)
+  }, [])
+
   const handleConfirmCancel = () => {
     abortControllerRef.current?.abort()
     isExportingRef.current = false
@@ -1805,9 +1818,12 @@ export function Dashboard() {
         isOpen={showSettings}
         onClose={() => setShowSettings(false)}
         onLikedSongsCacheInvalidated={handleLikedSongsCacheInvalidated}
+        layout={layout}
+        onLayoutChange={handleLayoutChange}
       />
       
       <ExportLayoutManager
+        layout={layout}
         selectedPlaylistsSection={selectedPlaylistsSection}
         unmatchedSongsSection={songsSection}
         mainTableSection={mainTableSection}
