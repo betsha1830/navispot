@@ -1634,6 +1634,13 @@ export function Dashboard() {
       checkedPlaylistIds={checkedPlaylistIds}
       onToggleCheck={handleTogglePlaylistCheck}
       onToggleCheckAll={handleToggleCheckAllPlaylists}
+    />
+  )
+
+  const songsSection = (
+    <SongsPanel
+      playlistGroups={playlistGroups}
+      isLoading={loadingTracks}
       statistics={{
         matched: selectedPlaylistsStats.reduce((sum, s) => sum + s.matched, 0),
         unmatched: selectedPlaylistsStats.reduce(
@@ -1644,10 +1651,6 @@ export function Dashboard() {
         failed: selectedPlaylistsStats.reduce((sum, s) => sum + s.failed, 0),
       }}
     />
-  )
-
-  const songsSection = (
-    <SongsPanel playlistGroups={playlistGroups} isLoading={loadingTracks} />
   )
 
   const mainTableSection = (

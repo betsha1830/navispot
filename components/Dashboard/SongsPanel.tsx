@@ -21,11 +21,18 @@ export interface PlaylistGroup {
 interface SongsPanelProps {
   playlistGroups: PlaylistGroup[]
   isLoading?: boolean
+  statistics?: {
+    matched: number
+    unmatched: number
+    total: number
+    failed?: number
+  }
 }
 
 export function SongsPanel({
   playlistGroups,
   isLoading = false,
+  statistics,
 }: SongsPanelProps) {
   const [showUnmatchedOnly, setShowUnmatchedOnly] = useState(false)
 
@@ -82,10 +89,34 @@ export function SongsPanel({
   if (filteredGroups.length === 0) {
     return (
       <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 overflow-hidden flex flex-col h-full">
-        <div className="px-4 py-3 border-b border-zinc-200 dark:border-zinc-800 flex-shrink-0">
-          <h2 className="text-sm font-medium text-zinc-900 dark:text-zinc-100">
-            Songs
-          </h2>
+        <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-200 dark:border-zinc-800 flex-shrink-0">
+          <div className="flex items-center gap-2">
+            <h2 className="text-sm font-medium text-zinc-900 dark:text-zinc-100">
+              Songs
+            </h2>
+            {statistics && (
+              <div className="flex items-center gap-2">
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                  </svg>
+                  {statistics.total}
+                </span>
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400">
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                  {statistics.matched}
+                </span>
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400">
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                  {statistics.unmatched}
+                </span>
+              </div>
+            )}
+          </div>
         </div>
         <div className="flex flex-col items-center justify-center py-12 px-4 text-center flex-1">
           {isLoading ? (
@@ -130,9 +161,33 @@ export function SongsPanel({
     <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 overflow-hidden flex flex-col h-full">
       <div className="px-4 py-3 border-b border-zinc-200 dark:border-zinc-800 flex-shrink-0">
         <div className="flex items-center justify-between">
-          <h2 className="text-sm font-medium text-zinc-900 dark:text-zinc-100">
-            Songs
-          </h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-sm font-medium text-zinc-900 dark:text-zinc-100">
+              Songs
+            </h2>
+            {statistics && (
+              <div className="flex items-center gap-2">
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                  </svg>
+                  {statistics.total}
+                </span>
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400">
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                  {statistics.matched}
+                </span>
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400">
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                  {statistics.unmatched}
+                </span>
+              </div>
+            )}
+          </div>
           <div className="flex items-center gap-3">
             <label className="flex items-center gap-2 cursor-pointer">
               <input

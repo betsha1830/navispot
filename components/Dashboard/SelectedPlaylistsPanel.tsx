@@ -23,12 +23,6 @@ interface SelectedPlaylistsPanelProps {
   checkedPlaylistIds: Set<string>
   onToggleCheck: (id: string) => void
   onToggleCheckAll: () => void
-  statistics?: {
-    matched: number
-    unmatched: number
-    total: number
-    failed?: number
-  }
 }
 
 const statusColors = {
@@ -51,7 +45,6 @@ export function SelectedPlaylistsPanel({
   checkedPlaylistIds,
   onToggleCheck,
   onToggleCheckAll,
-  statistics,
 }: SelectedPlaylistsPanelProps) {
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set())
 
@@ -77,58 +70,6 @@ export function SelectedPlaylistsPanel({
         <h2 className="text-sm font-medium text-zinc-900 dark:text-zinc-100">
           Selected Playlists ({selectedPlaylists.length})
         </h2>
-        {statistics && (
-          <div className="flex items-center gap-3">
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">
-              <svg
-                className="w-3.5 h-3.5"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M4 6h16M4 12h16M4 18h16"
-                />
-              </svg>
-              {statistics.total}
-            </span>
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400">
-              <svg
-                className="w-3.5 h-3.5"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M5 13l4 4L19 7"
-                />
-              </svg>
-              {statistics.matched}
-            </span>
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400">
-              <svg
-                className="w-3.5 h-3.5"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M6 18L18 6M6 6l12 12"
-                />
-              </svg>
-              {statistics.unmatched}
-            </span>
-          </div>
-        )}
       </div>
       <div className="overflow-auto flex-1">
         <table className="w-full">
