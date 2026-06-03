@@ -142,7 +142,7 @@ export function SettingsModal({
         className="absolute inset-0 bg-black/50 dark:bg-black/70 backdrop-blur-sm"
         onClick={handleClose}
       />
-      <div className="relative w-full max-w-2xl mx-4 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-xl overflow-hidden">
+      <div className="relative w-full max-w-2xl mx-4 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-xl overflow-y-auto max-h-[90vh]">
         <div className="flex items-center justify-between border-b border-zinc-200 dark:border-zinc-800 px-6 py-4">
           <h2
             id="settings-modal-title"
