@@ -55,6 +55,7 @@ export function SongsPanel({
       artist: string
       album: string
       duration: string
+      playlistName: string
     }> = []
 
     playlistGroups.forEach((group) => {
@@ -65,6 +66,7 @@ export function SongsPanel({
             artist: song.artist,
             album: song.album,
             duration: song.duration,
+            playlistName: group.playlistName,
           })
         }
       })
@@ -75,7 +77,21 @@ export function SongsPanel({
       return
     }
 
-    const jsonString = JSON.stringify(unmatchedSongs, null, 2)
+    const totalTracks = playlistGroups.reduce((sum, g) => sum + g.songs.length, 0)
+    const unmatchedCount = unmatchedSongs.length
+    const matchRate = totalTracks > 0 ? Math.round(((totalTracks - unmatchedCount) / totalTracks) * 100) : 0
+
+    const exportData = {
+      metadata: {
+        unmatchedCount,
+        totalTracks,
+        matchRate,
+        exportedAt: new Date().toISOString(),
+      },
+      songs: unmatchedSongs,
+    }
+
+    const jsonString = JSON.stringify(exportData, null, 2)
     const blob = new Blob([jsonString], { type: "application/json" })
     const url = URL.createObjectURL(blob)
     const link = document.createElement("a")
