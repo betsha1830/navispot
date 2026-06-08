@@ -295,7 +295,13 @@ export function findBestMatch(
     (m) => m.score >= bestScore - 0.05
   );
 
-  const hasAmbiguous = thresholdMatches.length > 1;
+  // When all top candidates are the same song (duplicates), it's not truly ambiguous
+  const firstMatch = thresholdMatches[0];
+  const allSameSong = thresholdMatches.length > 1 && thresholdMatches.every(
+    (m) => m.song.title === firstMatch.song.title && m.song.artist === firstMatch.song.artist
+  );
+
+  const hasAmbiguous = thresholdMatches.length > 1 && !allSameSong;
 
   return {
     matches: scoredMatches,

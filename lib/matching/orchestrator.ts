@@ -114,14 +114,20 @@ export async function matchTrack(
       return Math.abs(song.duration - spotifyDurationSec) < 2;
     });
 
-    if (variantMatches.length === 1) {
-      return {
-        spotifyTrack,
-        navidromeSong: variantMatches[0],
-        matchStrategy: 'isrc',
-        matchScore: 1,
-        status: 'matched',
-      };
+    if (variantMatches.length >= 1) {
+      const allSameSong = variantMatches.every(
+        (m) => m.title === variantMatches[0].title && m.artist === variantMatches[0].artist
+      );
+
+      if (variantMatches.length === 1 || allSameSong) {
+        return {
+          spotifyTrack,
+          navidromeSong: variantMatches[0],
+          matchStrategy: 'isrc',
+          matchScore: 1,
+          status: 'matched',
+        };
+      }
     }
   }
 
