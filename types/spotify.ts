@@ -14,7 +14,8 @@ export interface SpotifyPlaylist {
   description: string;
   images: { url: string }[];
   owner: { id: string; display_name: string };
-  items: { total: number };
+  items?: { total?: number };
+  tracks?: { total?: number };
   snapshot_id: string;
   public: boolean | null;
 }
@@ -22,7 +23,17 @@ export interface SpotifyPlaylist {
 export interface SpotifyPlaylistTrack {
   track: SpotifyTrack;
   added_at: string;
-  added_by: {
+  added_by?: {
+    id: string;
+    display_name: string;
+  };
+}
+
+export interface SpotifyPlaylistTrackItem {
+  track?: SpotifyTrack;
+  item?: SpotifyTrack;
+  added_at?: string;
+  added_by?: {
     id: string;
     display_name: string;
   };
@@ -38,7 +49,7 @@ export interface SpotifyPlaylistsResponse {
 }
 
 export interface SpotifyTracksResponse {
-  items: SpotifyPlaylistTrack[];
+  items: SpotifyPlaylistTrackItem[];
   total: number;
   next?: string;
   offset: number;

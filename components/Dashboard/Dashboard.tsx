@@ -93,6 +93,12 @@ function formatDuration(ms: number): string {
   return `${minutes}:${String(seconds).padStart(2, "0")}`
 }
 
+function getPlaylistTrackTotal(
+  playlist: SpotifyPlaylist | { items?: { total?: number }; tracks?: { total?: number } },
+): number {
+  return playlist.items?.total ?? playlist.tracks?.total ?? 0
+}
+
 export function Dashboard() {
   const { spotify, navidrome } = useAuth()
   const [playlists, setPlaylists] = useState<SpotifyPlaylist[]>([])
@@ -131,6 +137,9 @@ export function Dashboard() {
   const [showSuccess, setShowSuccess] = useState(false)
   const [showCancel, setShowCancel] = useState(false)
   const [showCancelConfirmation, setShowCancelConfirmation] = useState(false)
+  const [spotifyApiErrorToast, setSpotifyApiErrorToast] = useState<string | null>(
+    null,
+  )
   const [ownerFilter, setOwnerFilter] = useState("")
   const [visibilityFilter, setVisibilityFilter] = useState<"all" | "public" | "private">("all")
   const [dateAfterFilter, setDateAfterFilter] = useState("")
@@ -157,6 +166,13 @@ export function Dashboard() {
 
   const isExportingRef = useRef(false)
   const abortControllerRef = useRef<AbortController | null>(null)
+
+  const showSpotifyApiToast = useCallback((message: string) => {
+    setSpotifyApiErrorToast(message)
+    setTimeout(() => {
+      setSpotifyApiErrorToast(null)
+    }, 6000)
+  }, [])
 
   useEffect(() => {
     async function fetchData() {
@@ -233,7 +249,7 @@ export function Dashboard() {
 
       // Capture old track counts AND snapshot IDs for comparison
       const oldTrackCounts = new Map(
-        playlists.map(p => [p.id, p.items.total])
+        playlists.map((p) => [p.id, getPlaylistTrackTotal(p)]),
       )
       const oldSnapshots = new Map(
         playlists.map(p => [p.id, p.snapshot_id])
@@ -245,7 +261,8 @@ export function Dashboard() {
       const changedPlaylistIds = fetchedPlaylists
         .filter(p => oldSnapshots.has(p.id))
         .filter(p => {
-          const trackCountChanged = oldTrackCounts.get(p.id) !== p.items.total
+          const trackCountChanged =
+            oldTrackCounts.get(p.id) !== getPlaylistTrackTotal(p)
           const snapshotChanged = oldSnapshots.get(p.id) !== p.snapshot_id
           return trackCountChanged || snapshotChanged
         })
@@ -351,7 +368,7 @@ export function Dashboard() {
         name: playlist.name,
         images: playlist.images,
         owner: { display_name: playlist.owner.display_name },
-        items: playlist.items,
+        items: { total: getPlaylistTrackTotal(playlist) },
         snapshot_id: playlist.snapshot_id || "",
         isLikedSongs: false,
         selected: selectedIds.has(playlist.id),
@@ -426,8 +443,10 @@ export function Dashboard() {
 
       // Find playlists that still need dates
       const currentDates = cachedDates.size > 0 ? cachedDates : playlistCreatedDates
+      const currentUserId = spotify.user?.id
       const missingIds = playlists
         .filter((p) => !currentDates.has(p.id))
+        .filter((p) => !!currentUserId && p.owner?.id === currentUserId)
         .map((p) => p.id)
 
       if (missingIds.length === 0) return
@@ -477,7 +496,7 @@ export function Dashboard() {
 
     fetchDates()
     return () => { cancelled = true }
-  }, [spotify.isAuthenticated, spotify.token, playlists])
+  }, [spotify.isAuthenticated, spotify.token, spotify.user?.id, playlists])
 
   // Sync selectedIds with selectedPlaylistsStats for real-time population
   useEffect(() => {
@@ -511,7 +530,7 @@ export function Dashboard() {
         selectedPlaylists.push({
           id: p.id,
           name: p.name,
-          total: p.items.total,
+          total: getPlaylistTrackTotal(p),
           matched: cachedData?.statistics.matched ?? 0,
           unmatched: cachedData?.statistics.unmatched ?? 0,
           exported: cachedData?.statistics.matched ?? 0,
@@ -535,7 +554,19 @@ export function Dashboard() {
       if (!spotify.token) return
 
       const uncachedIds = Array.from(checkedPlaylistIds).filter(
-        (id) => !playlistTracksCache.has(id),
+        (id) => {
+          if (!playlistTracksCache.has(id)) return true
+
+          const cachedSongs = playlistTracksCache.get(id)
+          if (!cachedSongs) return true
+          if (cachedSongs.length > 0) return false
+          if (id === LIKED_SONGS_ID) return false
+
+          // Retry previously empty caches when playlist metadata says
+          // there should be tracks (prevents stale "0 tracks" state).
+          const playlist = playlists.find((p) => p.id === id)
+          return getPlaylistTrackTotal(playlist || {}) > 0
+        },
       )
       if (uncachedIds.length === 0) return
 
@@ -545,6 +576,7 @@ export function Dashboard() {
       try {
         spotifyClient.setToken(spotify.token)
         const newCache = new Map(playlistTracksCache)
+        const skippedNonOwned: string[] = []
 
         await Promise.all(
           uncachedIds.map(async (id) => {
@@ -554,6 +586,26 @@ export function Dashboard() {
                 const savedTracks = await spotifyClient.getAllSavedTracks()
                 tracks = savedTracks.map((t) => t.track)
               } else {
+                const playlist = playlists.find((p) => p.id === id)
+                const currentUserId = spotify.user?.id
+                const isDefinitelyNonOwned = !!(
+                  playlist &&
+                  currentUserId &&
+                  playlist.owner?.id &&
+                  playlist.owner.id !== currentUserId
+                )
+
+                if (isDefinitelyNonOwned) {
+                  skippedNonOwned.push(playlist?.name || id)
+                  newCache.set(id, [])
+                  setLoadingPlaylistIds((prev) => {
+                    const updated = new Set(prev)
+                    updated.delete(id)
+                    return updated
+                  })
+                  return
+                }
+
                 const playlistTracks =
                   await spotifyClient.getAllPlaylistTracks(id)
                 tracks = playlistTracks.map((t) => t.track)
@@ -568,6 +620,16 @@ export function Dashboard() {
                 duration: formatDuration(track.duration_ms),
               }))
 
+              if (id !== LIKED_SONGS_ID) {
+                const playlist = playlists.find((p) => p.id === id)
+                const expectedTotal = getPlaylistTrackTotal(playlist || {})
+                if (songs.length === 0 && expectedTotal > 0) {
+                  showSpotifyApiToast(
+                    `Spotify returned no readable items for "${playlist?.name || id}" despite ${expectedTotal} listed tracks.`,
+                  )
+                }
+              }
+
               newCache.set(id, songs)
 
               // Remove from loading set as soon as this playlist is done
@@ -578,6 +640,12 @@ export function Dashboard() {
               })
             } catch (error) {
               console.error(`Failed to fetch tracks for playlist ${id}:`, error)
+              const errorMessage =
+                error instanceof Error ? error.message : String(error)
+              const toastMessage = errorMessage.includes("(403)")
+                ? "Spotify API error: access denied for one or more playlists (403 Forbidden)."
+                : `Spotify API error: ${errorMessage}`
+              showSpotifyApiToast(toastMessage)
               newCache.set(id, [])
 
               // Remove from loading set on error too
@@ -590,6 +658,12 @@ export function Dashboard() {
           }),
         )
 
+        if (skippedNonOwned.length > 0) {
+          showSpotifyApiToast(
+            `Spotify API change: skipped ${skippedNonOwned.length} non-owned playlist(s); item reads are restricted.`,
+          )
+        }
+
         setPlaylistTracksCache(newCache)
       } catch (error) {
         console.error("Failed to fetch tracks:", error)
@@ -600,7 +674,14 @@ export function Dashboard() {
     }
 
     fetchTracks()
-  }, [checkedPlaylistIds, spotify.token, playlistTracksCache])
+  }, [
+    checkedPlaylistIds,
+    spotify.token,
+    spotify.user?.id,
+    playlistTracksCache,
+    playlists,
+    showSpotifyApiToast,
+  ])
 
   useEffect(() => {
     if (selectedIds.size === 0) return
@@ -840,7 +921,7 @@ export function Dashboard() {
         unmatched: 0,
         exported: 0,
         failed: 0,
-        total: item.items.total,
+        total: getPlaylistTrackTotal(item),
         status: "pending" as const,
         progress: 0,
       })),
@@ -1542,7 +1623,7 @@ export function Dashboard() {
     playlists
       .filter((p) => selectedIds.has(p.id))
       .forEach((p) => {
-        result.push({ name: p.name, trackCount: p.items.total })
+        result.push({ name: p.name, trackCount: getPlaylistTrackTotal(p) })
       })
 
     return result
@@ -1817,10 +1898,52 @@ export function Dashboard() {
     </div>
   )
 
+  const spotifyErrorToast = spotifyApiErrorToast && (
+    <div className="fixed top-4 right-4 z-50 animate-fade-in">
+      <div className="flex items-center gap-3 rounded-lg bg-red-500 px-4 py-3 text-white shadow-lg">
+        <svg
+          className="h-5 w-5"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M12 9v3m0 4h.01M5.636 5.636a9 9 0 1112.728 12.728A9 9 0 015.636 5.636z"
+          />
+        </svg>
+        <span className="max-w-[420px] text-sm font-medium">
+          {spotifyApiErrorToast}
+        </span>
+        <button
+          onClick={() => setSpotifyApiErrorToast(null)}
+          className="ml-2 text-white/80 hover:text-white"
+        >
+          <svg
+            className="h-4 w-4"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M6 18L18 6M6 6l12 12"
+            />
+          </svg>
+        </button>
+      </div>
+    </div>
+  )
+
   return (
     <div>
       {successToast}
       {cancelToast}
+      {spotifyErrorToast}
       <CancelConfirmationDialog
         isOpen={showCancelConfirmation}
         onClose={handleCloseCancelConfirmation}
