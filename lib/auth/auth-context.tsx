@@ -1,10 +1,11 @@
 'use client';
 
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
-import { AuthContextType, SpotifyAuthState, NavidromeAuthState, SPOTIFY_STORAGE_KEY, NAVIDROME_STORAGE_KEY } from '@/types/auth-context';
+import { AuthContextType, SpotifyAuthState, NavidromeAuthState, SPOTIFY_STORAGE_KEY, NAVIDROME_STORAGE_KEY, SKIP_SPOTIFY_STORAGE_KEY } from '@/types/auth-context';
 import { SpotifyToken, SpotifyUser } from '@/types/spotify-auth';
 import { NavidromeCredentials } from '@/types/navidrome';
 import { NavidromeApiClient } from '@/lib/navidrome/client';
+import { getJSON, setJSON } from '@/lib/storage';
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
@@ -23,6 +24,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     clientId: null,
   });
   const [isLoading, setIsLoading] = useState(true);
+  const [skipSpotify, setSkipSpotifyState] = useState<boolean>(() =>
+    getJSON<boolean>(SKIP_SPOTIFY_STORAGE_KEY, false),
+  );
 
   const testNavidromeConnection = useCallback(async (credentials: NavidromeCredentials): Promise<boolean> => {
     if (!credentials) {
@@ -341,6 +345,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
+  const setSkipSpotify = useCallback((skip: boolean) => {
+    setSkipSpotifyState(skip);
+    if (skip) {
+      setJSON(SKIP_SPOTIFY_STORAGE_KEY, true);
+    } else {
+      try { window.localStorage.removeItem(SKIP_SPOTIFY_STORAGE_KEY); } catch { /* ignore */ }
+    }
+  }, []);
+
   const value: AuthContextType = {
     spotify,
     navidrome,
@@ -351,6 +364,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     testNavidromeConnection,
     clearNavidromeCredentials,
     isLoading,
+    skipSpotify,
+    setSkipSpotify,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
