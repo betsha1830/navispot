@@ -52,11 +52,15 @@
 
 ### Path A: With Spotify (full library access)
 
+> **Requires a Spotify Premium account** if you're using the live demo linked above, since the deployed app is in Spotify's Extended Quota mode and Premium is required to authorize it. If you're self-hosting with your own dev-mode Spotify app, any account you add to the app's allowlist will work — but the user completing the OAuth flow still needs to be on the Premium tier to authorize.
+
 1. **Connect Spotify** – Click "Connect Spotify" and authorize the app
 2. **Enter Navidrome** – Fill in your Navidrome server URL, username, and password
 3. **Select & Export** – Browse your playlists, check what to export, click Export
 
 ### Path B: Without Spotify (public playlists only)
+
+> **No Spotify Premium required** — Path B uses the server's Client Credentials flow, which works with any Spotify account (or no account at all) and is powered entirely by the app's own Spotify developer credentials. This is the path to take if you're on a free Spotify account.
 
 1. **Enter Navidrome** – Fill in your Navidrome server URL, username, and password
 2. **Click "Continue without Spotify"** on the login page
