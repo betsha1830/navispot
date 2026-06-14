@@ -1,10 +1,62 @@
+import https from 'node:https';
 import type { SpotifyTrack } from '@/types/spotify';
 import type { ImportedPlaylist } from '@/types/public-playlist';
 
 const SPOTIFY_API_BASE = 'https://api.spotify.com/v1';
 const SPOTIFY_AUTH_BASE = 'https://accounts.spotify.com/api/token';
+const REQUEST_TIMEOUT_MS = 15_000;
 
 let cachedToken: { value: string; expiresAt: number } | null = null;
+
+interface HttpResponse<T> {
+  status: number;
+  body: T;
+  rawText: string;
+}
+
+function httpsRequest<T = unknown>(
+  url: string,
+  options: { method?: string; headers?: Record<string, string>; body?: string } = {},
+): Promise<HttpResponse<T>> {
+  return new Promise((resolve, reject) => {
+    const parsed = new URL(url);
+    const req = https.request(
+      {
+        hostname: parsed.hostname,
+        port: parsed.port || 443,
+        path: parsed.pathname + parsed.search,
+        method: options.method || 'GET',
+        headers: options.headers || {},
+        family: 4,
+        timeout: REQUEST_TIMEOUT_MS,
+      },
+      (res) => {
+        let rawText = '';
+        res.setEncoding('utf8');
+        res.on('data', (chunk: string) => {
+          rawText += chunk;
+        });
+        res.on('end', () => {
+          let body: T;
+          try {
+            body = rawText ? (JSON.parse(rawText) as T) : ({} as T);
+          } catch {
+            body = rawText as unknown as T;
+          }
+          resolve({ status: res.statusCode || 0, body, rawText });
+        });
+      },
+    );
+    req.on('error', reject);
+    req.on('timeout', () => {
+      req.destroy(
+        new Error(`Request to ${parsed.hostname} timed out after ${REQUEST_TIMEOUT_MS}ms`),
+      );
+    });
+    if (options.body) req.write(options.body);
+    req.end();
+  });
+}
 
 async function getClientCredentialsToken(): Promise<string> {
   const now = Date.now();
@@ -19,27 +71,31 @@ async function getClientCredentialsToken(): Promise<string> {
   }
 
   const basic = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
-  const res = await fetch(SPOTIFY_AUTH_BASE, {
-    method: 'POST',
-    headers: {
-      Authorization: `Basic ${basic}`,
-      'Content-Type': 'application/x-www-form-urlencoded',
+  const body = 'grant_type=client_credentials';
+  const res = await httpsRequest<{ access_token: string; expires_in: number }>(
+    SPOTIFY_AUTH_BASE,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Basic ${basic}`,
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Content-Length': Buffer.byteLength(body).toString(),
+      },
+      body,
     },
-    body: 'grant_type=client_credentials',
-    cache: 'no-store',
-  });
+  );
 
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Spotify token request failed (${res.status}): ${text}`);
+  if (res.status !== 200) {
+    throw new Error(
+      `Spotify token request failed (${res.status}): ${res.rawText.slice(0, 200)}`,
+    );
   }
 
-  const data = (await res.json()) as { access_token: string; expires_in: number };
   cachedToken = {
-    value: data.access_token,
-    expiresAt: now + data.expires_in * 1000,
+    value: res.body.access_token,
+    expiresAt: now + res.body.expires_in * 1000,
   };
-  return data.access_token;
+  return res.body.access_token;
 }
 
 export function extractPlaylistId(input: string): string | null {
@@ -51,18 +107,18 @@ export function extractPlaylistId(input: string): string | null {
   return null;
 }
 
-async function spotifyFetch<T>(token: string, path: string): Promise<T> {
-  const res = await fetch(`${SPOTIFY_API_BASE}${path}`, {
+async function spotifyGet<T>(token: string, path: string): Promise<T> {
+  const res = await httpsRequest<T>(`${SPOTIFY_API_BASE}${path}`, {
     headers: { Authorization: `Bearer ${token}` },
-    cache: 'no-store',
   });
-  if (!res.ok) {
-    const text = await res.text();
-    const err = new Error(`Spotify ${res.status}: ${text}`) as Error & { status?: number };
+  if (res.status !== 200) {
+    const err = new Error(
+      `Spotify ${res.status}: ${res.rawText.slice(0, 200)}`,
+    ) as Error & { status?: number };
     err.status = res.status;
     throw err;
   }
-  return (await res.json()) as T;
+  return res.body;
 }
 
 interface PlaylistMeta {
@@ -83,21 +139,21 @@ export async function getPublicPlaylist(
 ): Promise<ImportedPlaylist> {
   const token = await getClientCredentialsToken();
 
-  const meta = await spotifyFetch<PlaylistMeta>(
+  const meta = await spotifyGet<PlaylistMeta>(
     token,
     `/playlists/${playlistId}?fields=id,name,owner(display_name),images,tracks(total)`,
   );
 
   const tracks: SpotifyTrack[] = [];
-  let url: string | null =
+  let nextPath: string | null =
     `/playlists/${playlistId}/tracks?fields=items(track(id,name,artists(id,name),album(id,name,release_date),duration_ms,external_ids,external_urls),is_local,added_at),next&limit=100`;
-  while (url) {
-    const page: PlaylistTracksPage = await spotifyFetch<PlaylistTracksPage>(token, url);
+  while (nextPath) {
+    const page: PlaylistTracksPage = await spotifyGet<PlaylistTracksPage>(token, nextPath);
     for (const item of page.items) {
       if (item.is_local) continue;
       if (item.track) tracks.push(item.track);
     }
-    url = page.next;
+    nextPath = page.next;
   }
 
   return {
