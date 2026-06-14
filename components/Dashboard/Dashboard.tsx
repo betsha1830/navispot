@@ -58,7 +58,7 @@ import {
 import { PlaylistTableItem, PlaylistInfo } from "@/types/playlist-table"
 import { TrackMatch } from "@/types/matching"
 import { ImportedPlaylist } from "@/types/public-playlist"
-import { PublicPlaylistImport } from "@/components/PublicPlaylistImport"
+import { useToast } from "@/components/Toast"
 import { getJSON, setJSON } from "@/lib/storage"
 import Image from "next/image"
 import NavispotLogo from "@/public/navispot.png"
@@ -103,7 +103,8 @@ function formatDuration(ms: number): string {
 }
 
 export function Dashboard() {
-  const { spotify, navidrome } = useAuth()
+  const { spotify, navidrome, spotifyLogout, setSkipSpotify } = useAuth()
+  const toast = useToast()
   const [playlists, setPlaylists] = useState<SpotifyPlaylist[]>([])
   const [tableItems, setTableItems] = useState<PlaylistTableItem[]>([])
   const [importedPlaylists, setImportedPlaylists] = useState<ImportedPlaylist[]>(() =>
@@ -140,8 +141,6 @@ export function Dashboard() {
   )
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc")
   const [searchQuery, setSearchQuery] = useState("")
-  const [showSuccess, setShowSuccess] = useState(false)
-  const [showCancel, setShowCancel] = useState(false)
   const [showCancelConfirmation, setShowCancelConfirmation] = useState(false)
   const [ownerFilter, setOwnerFilter] = useState("")
   const [visibilityFilter, setVisibilityFilter] = useState<"all" | "public" | "private">("all")
@@ -242,53 +241,138 @@ export function Dashboard() {
     })
   }, [])
 
-  const handleRefreshPlaylists = async () => {
-    if (!spotify.isAuthenticated || !spotify.token) {
-      setError("Please connect to Spotify to refresh playlists.")
-      return
-    }
+  const [importingUrl, setImportingUrl] = useState(false)
 
+  const handleImportFromUrl = useCallback(
+    async (url: string): Promise<boolean> => {
+      setImportingUrl(true)
+      try {
+        const res = await fetch("/api/spotify/public-playlist", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url: url.trim() }),
+        })
+        const data = await res.json()
+        if (!res.ok) {
+          toast.showError(data?.error?.message ?? `Request failed (${res.status})`)
+          return false
+        }
+        const playlist: ImportedPlaylist = data.playlist
+        setImportedPlaylists((prev) => {
+          const filtered = prev.filter((p) => p.id !== playlist.id)
+          return [...filtered, playlist]
+        })
+        setSelectedIds((prev) => {
+          const next = new Set(prev)
+          next.add(playlist.id)
+          return next
+        })
+        toast.showSuccess(`Imported "${playlist.name}" (${playlist.trackCount} tracks)`)
+        return true
+      } catch (err) {
+        toast.showError(err instanceof Error ? err.message : "Network error")
+        return false
+      } finally {
+        setImportingUrl(false)
+      }
+    },
+    [toast],
+  )
+
+  const handleLogout = useCallback(async () => {
+    try {
+      if (spotify.isAuthenticated) {
+        await spotifyLogout()
+      }
+    } catch (err) {
+      console.error("Spotify logout failed:", err)
+    }
+    setSkipSpotify(false)
+    toast.showInfo("Signed out")
+  }, [spotify.isAuthenticated, spotifyLogout, setSkipSpotify, toast])
+
+  const handleClearImported = useCallback(() => {
+    const count = importedPlaylists.length
+    setImportedPlaylists([])
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      for (const p of importedPlaylists) next.delete(p.id)
+      return next
+    })
+    if (count > 0) {
+      toast.showSuccess(`Cleared ${count} imported ${count === 1 ? "playlist" : "playlists"}`)
+    }
+  }, [importedPlaylists, toast])
+
+  const handleRefreshPlaylists = async () => {
     setRefreshing(true)
     setError(null)
 
     try {
-      spotifyClient.setToken(spotify.token)
+      if (spotify.isAuthenticated && spotify.token) {
+        spotifyClient.setToken(spotify.token)
 
-      // Capture old track counts AND snapshot IDs for comparison
-      const oldTrackCounts = new Map(
-        playlists.map(p => [p.id, p.items.total])
-      )
-      const oldSnapshots = new Map(
-        playlists.map(p => [p.id, p.snapshot_id])
-      )
+        // Capture old track counts AND snapshot IDs for comparison
+        const oldTrackCounts = new Map(
+          playlists.map(p => [p.id, p.items.total])
+        )
+        const oldSnapshots = new Map(
+          playlists.map(p => [p.id, p.snapshot_id])
+        )
 
-      const fetchedPlaylists = await spotifyClient.getAllPlaylists(undefined, true)
+        const fetchedPlaylists = await spotifyClient.getAllPlaylists(undefined, true)
 
-      // Compare both track counts AND snapshot IDs - playlist changed if either is different
-      const changedPlaylistIds = fetchedPlaylists
-        .filter(p => oldSnapshots.has(p.id))
-        .filter(p => {
-          const trackCountChanged = oldTrackCounts.get(p.id) !== p.items.total
-          const snapshotChanged = oldSnapshots.get(p.id) !== p.snapshot_id
-          return trackCountChanged || snapshotChanged
-        })
-        .map(p => p.id)
+        // Compare both track counts AND snapshot IDs - playlist changed if either is different
+        const changedPlaylistIds = fetchedPlaylists
+          .filter(p => oldSnapshots.has(p.id))
+          .filter(p => {
+            const trackCountChanged = oldTrackCounts.get(p.id) !== p.items.total
+            const snapshotChanged = oldSnapshots.get(p.id) !== p.snapshot_id
+            return trackCountChanged || snapshotChanged
+          })
+          .map(p => p.id)
 
-      if (changedPlaylistIds.length > 0) {
-        setPlaylistTracksCache(prev => {
-          const newCache = new Map(prev)
-          changedPlaylistIds.forEach(id => newCache.delete(id))
-          return newCache
-        })
+        if (changedPlaylistIds.length > 0) {
+          setPlaylistTracksCache(prev => {
+            const newCache = new Map(prev)
+            changedPlaylistIds.forEach(id => newCache.delete(id))
+            return newCache
+          })
+        }
+
+        setPlaylists(fetchedPlaylists)
+
+        try {
+          const count = await spotifyClient.getSavedTracksCount(undefined, true)
+          setLikedSongsCount(count)
+        } catch {
+          setLikedSongsCount(0)
+        }
       }
 
-      setPlaylists(fetchedPlaylists)
-
-      try {
-        const count = await spotifyClient.getSavedTracksCount(undefined, true)
-        setLikedSongsCount(count)
-      } catch {
-        setLikedSongsCount(0)
+      // Re-fetch each imported playlist to pick up the latest tracks/metadata
+      if (importedPlaylists.length > 0) {
+        const updated: ImportedPlaylist[] = []
+        for (const existing of importedPlaylists) {
+          try {
+            const res = await fetch("/api/spotify/public-playlist", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                url: `https://open.spotify.com/playlist/${existing.id}`,
+              }),
+            })
+            if (res.ok) {
+              const data = await res.json()
+              updated.push(data.playlist as ImportedPlaylist)
+            } else {
+              updated.push(existing)
+            }
+          } catch {
+            updated.push(existing)
+          }
+        }
+        setImportedPlaylists(updated)
       }
 
       if (
@@ -386,21 +470,6 @@ export function Dashboard() {
       }
     })
 
-    const likedSongsCachedData = trackExportCache.get(LIKED_SONGS_ID)
-    const likedSongsItem: PlaylistTableItem = {
-      id: LIKED_SONGS_ID,
-      name: "Liked Songs",
-      images: [{ url: "" }],
-      owner: { display_name: "You" },
-      items: { total: likedSongsCount },
-      snapshot_id: "",
-      isLikedSongs: true,
-      selected: selectedIds.has(LIKED_SONGS_ID),
-      exportStatus: likedSongsCachedData?.exportedAt ? "exported" : "none",
-      navidromePlaylistId: undefined,
-      lastExportedAt: likedSongsCachedData?.exportedAt,
-    }
-
     const importedItems: PlaylistTableItem[] = importedPlaylists.map((p) => {
       const cachedData = trackExportCache.get(p.id)
       return {
@@ -420,7 +489,7 @@ export function Dashboard() {
       }
     })
 
-    const allItems = [likedSongsItem, ...playlistItems, ...importedItems]
+    const allItems = [...playlistItems, ...importedItems]
     setTableItems(allItems)
   }, [playlists, navidromePlaylists, selectedIds, likedSongsCount, trackExportCache, playlistCreatedDates, importedPlaylists])
 
@@ -521,34 +590,20 @@ export function Dashboard() {
     return () => { cancelled = true }
   }, [spotify.isAuthenticated, spotify.token, playlists])
 
-  // Sync selectedIds with selectedPlaylistsStats for real-time population
+  // Sync selectedIds with selectedPlaylistsStats for real-time population.
+  // Triggered when the user checks/unchecks a row in the main table — the
+  // corresponding playlist appears in the Selected Playlists panel (auto-checked)
+  // and its tracks become available in the Songs panel.
   useEffect(() => {
     if (isExporting) return // Don't update during export to preserve progress data
 
     const selectedPlaylists: SelectedPlaylist[] = []
 
-    if (selectedIds.has(LIKED_SONGS_ID)) {
-      const likedSongsCachedData = trackExportCache.get(LIKED_SONGS_ID)
-      const hasCachedExport = !!likedSongsCachedData?.exportedAt
-
-      selectedPlaylists.push({
-        id: LIKED_SONGS_ID,
-        name: "Liked Songs",
-        total: likedSongsCount,
-        matched: likedSongsCachedData?.statistics.matched ?? 0,
-        unmatched: likedSongsCachedData?.statistics.unmatched ?? 0,
-        exported: likedSongsCachedData?.statistics.matched ?? 0,
-        failed: 0,
-        status: hasCachedExport ? "exported" : "pending",
-        progress: hasCachedExport ? 100 : 0,
-      })
-    }
-
     playlists
       .filter((p) => selectedIds.has(p.id))
       .forEach((p) => {
         const cachedData = trackExportCache.get(p.id)
-        const hasCachedExport = cachedData?.navidromePlaylistId
+        const hasCachedExport = !!cachedData?.navidromePlaylistId
 
         selectedPlaylists.push({
           id: p.id,
@@ -563,21 +618,43 @@ export function Dashboard() {
         })
       })
 
+    for (const p of importedPlaylists) {
+      if (!selectedIds.has(p.id)) continue
+      const cachedData = trackExportCache.get(p.id)
+      const hasCachedExport = !!cachedData?.navidromePlaylistId
+
+      selectedPlaylists.push({
+        id: p.id,
+        name: p.name,
+        total: p.trackCount,
+        matched: cachedData?.statistics.matched ?? 0,
+        unmatched: cachedData?.statistics.unmatched ?? 0,
+        exported: cachedData?.statistics.matched ?? 0,
+        failed: cachedData?.statistics.unmatched ?? 0,
+        status: hasCachedExport ? "exported" : "pending",
+        progress: hasCachedExport ? 100 : 0,
+      })
+    }
+
     setSelectedPlaylistsStats(selectedPlaylists)
 
     // Auto-check all selected playlists by default
     if (selectedPlaylists.length > 0) {
       setCheckedPlaylistIds(new Set(selectedPlaylists.map((p) => p.id)))
     }
-  }, [selectedIds, playlists, likedSongsCount, isExporting, trackExportCache])
+  }, [selectedIds, playlists, importedPlaylists, isExporting, trackExportCache])
 
   // Fetch tracks for checked playlists
+  // Fetch tracks for checked Spotify-owned playlists that aren't cached.
+  // Imported playlists already have their tracks in memory (importedPlaylists),
+  // so we skip them here and source directly in playlistGroups below.
   useEffect(() => {
     async function fetchTracks() {
       if (!spotify.token) return
 
+      const importedIds = new Set(importedPlaylists.map((p) => p.id))
       const uncachedIds = Array.from(checkedPlaylistIds).filter(
-        (id) => !playlistTracksCache.has(id),
+        (id) => !playlistTracksCache.has(id) && !importedIds.has(id),
       )
       if (uncachedIds.length === 0) return
 
@@ -591,15 +668,8 @@ export function Dashboard() {
         await Promise.all(
           uncachedIds.map(async (id) => {
             try {
-              let tracks
-              if (id === LIKED_SONGS_ID) {
-                const savedTracks = await spotifyClient.getAllSavedTracks()
-                tracks = savedTracks.map((t) => t.track)
-              } else {
-                const playlistTracks =
-                  await spotifyClient.getAllPlaylistTracks(id)
-                tracks = playlistTracks.map((t) => t.track)
-              }
+              const playlistTracks = await spotifyClient.getAllPlaylistTracks(id)
+              const tracks = playlistTracks.map((t) => t.track)
 
               const songs: Song[] = tracks.filter((t) => t != null).map((track) => ({
                 spotifyTrackId: track.id,
@@ -611,18 +681,10 @@ export function Dashboard() {
               }))
 
               newCache.set(id, songs)
-
-              // Remove from loading set as soon as this playlist is done
-              setLoadingPlaylistIds((prev) => {
-                const updated = new Set(prev)
-                updated.delete(id)
-                return updated
-              })
             } catch (error) {
               console.error(`Failed to fetch tracks for playlist ${id}:`, error)
               newCache.set(id, [])
-
-              // Remove from loading set on error too
+            } finally {
               setLoadingPlaylistIds((prev) => {
                 const updated = new Set(prev)
                 updated.delete(id)
@@ -637,12 +699,14 @@ export function Dashboard() {
         console.error("Failed to fetch tracks:", error)
       } finally {
         setLoadingTracks(false)
-        setLoadingPlaylistIds(new Set())
+        if (loadingPlaylistIds.size > 0) {
+          setLoadingPlaylistIds(new Set())
+        }
       }
     }
 
     fetchTracks()
-  }, [checkedPlaylistIds, spotify.token, playlistTracksCache])
+  }, [checkedPlaylistIds, spotify.token, playlistTracksCache, importedPlaylists, loadingPlaylistIds])
 
   useEffect(() => {
     if (selectedIds.size === 0) return
@@ -1359,10 +1423,7 @@ export function Dashboard() {
           )
 
           if (i === itemsToExport.length - 1) {
-            setShowSuccess(true)
-            setTimeout(() => {
-              setShowSuccess(false)
-            }, 5000)
+            toast.showSuccess("Export completed successfully!")
             isExportingRef.current = false
             setIsExporting(false)
           }
@@ -1510,10 +1571,7 @@ export function Dashboard() {
         )
 
         if (i === itemsToExport.length - 1) {
-          setShowSuccess(true)
-          setTimeout(() => {
-            setShowSuccess(false)
-          }, 5000)
+          toast.showSuccess("Export completed successfully!")
           isExportingRef.current = false
           setIsExporting(false)
         }
@@ -1522,10 +1580,7 @@ export function Dashboard() {
       const errorMessage = err instanceof Error ? err.message : "Export failed"
 
       if (err instanceof DOMException && err.name === 'AbortError') {
-        setShowCancel(true)
-        setTimeout(() => {
-          setShowCancel(false)
-        }, 3000)
+        toast.showWarning("Export was cancelled")
       } else {
         setError(errorMessage)
         setProgressState({
@@ -1534,6 +1589,7 @@ export function Dashboard() {
           statistics: { matched: 0, unmatched: 0, exported: 0, failed: 0 },
           error: errorMessage,
         })
+        toast.showError(errorMessage)
       }
     } finally {
       isExportingRef.current = false
@@ -1613,14 +1669,39 @@ export function Dashboard() {
         result.push({ name: p.name, trackCount: p.items.total })
       })
 
+    importedPlaylists
+      .filter((p) => selectedIds.has(p.id))
+      .forEach((p) => {
+        result.push({ name: p.name, trackCount: p.trackCount })
+      })
+
     return result
-  }, [selectedIds, likedSongsCount, playlists])
+  }, [selectedIds, likedSongsCount, playlists, importedPlaylists])
 
   const playlistGroups: PlaylistGroup[] = useMemo(() => {
+    const importedById = new Map(importedPlaylists.map((p) => [p.id, p]))
     return selectedPlaylistsStats
       .filter((p) => checkedPlaylistIds.has(p.id))
       .map((playlist) => {
-        const songs = playlistTracksCache.get(playlist.id) || []
+        let songs = playlistTracksCache.get(playlist.id)
+
+        // Imported playlists have their tracks in memory (from the import
+        // API), so build the Song list on demand from that data.
+        if (!songs) {
+          const imported = importedById.get(playlist.id)
+          if (imported) {
+            songs = imported.tracks.map((t) => ({
+              spotifyTrackId: t.id,
+              title: t.name,
+              album: t.album.name,
+              artist: t.artists.map((a) => a.name).join(", "),
+              duration: formatDuration(t.duration_ms),
+            }))
+          } else {
+            songs = []
+          }
+        }
+
         const statusMap = songExportStatus.get(playlist.id)
         const songsWithStatus = songs.map((song) => ({
           ...song,
@@ -1639,6 +1720,7 @@ export function Dashboard() {
     playlistTracksCache,
     loadingPlaylistIds,
     songExportStatus,
+    importedPlaylists,
   ])
 
   const fixedExportButton = (
@@ -1660,6 +1742,30 @@ export function Dashboard() {
 
         {/* Export Button - Right Side */}
         <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={handleLogout}
+            disabled={isExporting}
+            aria-label="Log out and return to login"
+            title="Log out / Back to login"
+            className="cursor-pointer inline-flex items-center gap-2 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 px-3 py-2 text-sm font-medium text-zinc-700 dark:text-zinc-200 shadow-sm hover:bg-zinc-50 hover:border-zinc-300 hover:text-red-600 hover:border-red-300 dark:hover:bg-zinc-700 dark:hover:border-red-700 dark:hover:text-red-400 transition-all disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-white disabled:hover:border-zinc-200 disabled:hover:text-zinc-700 dark:disabled:hover:bg-zinc-800 dark:disabled:hover:border-zinc-700 dark:disabled:hover:text-zinc-200"
+          >
+            <svg
+              className="h-4 w-4"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              aria-hidden="true"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
+              />
+            </svg>
+            <span>Log out</span>
+          </button>
           <button
             onClick={() => setShowSettings(true)}
             disabled={isExporting}
@@ -1748,10 +1854,14 @@ export function Dashboard() {
       onSort={handleSort}
       searchQuery={searchQuery}
       onSearchChange={setSearchQuery}
+      onImportClick={handleImportFromUrl}
+      isImporting={importingUrl}
       isExporting={isExporting}
       onRefresh={handleRefreshPlaylists}
       isRefreshing={refreshing}
       loading={loading}
+      onClear={handleClearImported}
+      canClear={importedPlaylists.length > 0}
       ownerFilter={ownerFilter}
       onOwnerFilterChange={setOwnerFilter}
       visibilityFilter={visibilityFilter}
@@ -1769,19 +1879,6 @@ export function Dashboard() {
     />
   )
 
-  if (!spotify.isAuthenticated && importedPlaylists.length === 0) {
-    return (
-      <div className="flex min-h-[400px] flex-col items-center justify-center gap-4">
-        <p className="text-gray-500">
-          Connect your Spotify account, or paste a public Spotify playlist URL below to get started.
-        </p>
-        <div className="w-full max-w-2xl">
-          <PublicPlaylistImport onImported={handlePlaylistImported} />
-        </div>
-      </div>
-    )
-  }
-
   if (loading) {
     return (
       <div className="flex min-h-[400px] items-center justify-center">
@@ -1798,100 +1895,8 @@ export function Dashboard() {
     )
   }
 
-  if (playlists.length === 0 && likedSongsCount === 0 && importedPlaylists.length === 0) {
-    return (
-      <div className="flex min-h-[400px] items-center justify-center">
-        <p className="text-gray-500">No playlists or saved tracks found.</p>
-      </div>
-    )
-  }
-
-  const successToast = showSuccess && (
-    <div className="fixed top-4 right-4 z-50 animate-fade-in">
-      <div className="flex items-center gap-3 rounded-lg bg-green-500 px-4 py-3 text-white shadow-lg">
-        <svg
-          className="h-5 w-5"
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M5 13l4 4L19 7"
-          />
-        </svg>
-        <span className="text-sm font-medium">
-          Export completed successfully!
-        </span>
-        <button
-          onClick={() => setShowSuccess(false)}
-          className="ml-2 text-white/80 hover:text-white"
-        >
-          <svg
-            className="h-4 w-4"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M6 18L18 6M6 6l12 12"
-            />
-          </svg>
-        </button>
-      </div>
-    </div>
-  )
-
-  const cancelToast = showCancel && (
-    <div className="fixed top-4 right-4 z-50 animate-fade-in">
-      <div className="flex items-center gap-3 rounded-lg bg-yellow-500 px-4 py-3 text-white shadow-lg">
-        <svg
-          className="h-5 w-5"
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M6 18L18 6M6 6l12 12"
-          />
-        </svg>
-        <span className="text-sm font-medium">
-          Export was cancelled
-        </span>
-        <button
-          onClick={() => setShowCancel(false)}
-          className="ml-2 text-white/80 hover:text-white"
-        >
-          <svg
-            className="h-4 w-4"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M6 18L18 6M6 6l12 12"
-            />
-          </svg>
-        </button>
-      </div>
-    </div>
-  )
-
   return (
     <div>
-      {successToast}
-      {cancelToast}
       <CancelConfirmationDialog
         isOpen={showCancelConfirmation}
         onClose={handleCloseCancelConfirmation}
@@ -1917,14 +1922,7 @@ export function Dashboard() {
         layout={layout}
         selectedPlaylistsSection={selectedPlaylistsSection}
         unmatchedSongsSection={songsSection}
-        mainTableSection={
-          <div>
-            <div className="mb-4">
-              <PublicPlaylistImport onImported={handlePlaylistImported} />
-            </div>
-            {mainTableSection}
-          </div>
-        }
+        mainTableSection={mainTableSection}
         fixedExportButton={fixedExportButton}
       />
     </div>

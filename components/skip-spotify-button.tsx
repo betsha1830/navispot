@@ -23,7 +23,7 @@ export function SkipSpotifyButton() {
         <button
           type="button"
           onClick={handleUndo}
-          className="text-sm text-blue-600 underline hover:text-blue-700 dark:text-blue-400"
+          className="cursor-pointer text-sm text-blue-600 underline hover:text-blue-700 dark:text-blue-400"
         >
           Connect Spotify instead
         </button>
@@ -32,18 +32,19 @@ export function SkipSpotifyButton() {
   }
 
   return (
-    <div className="flex flex-col gap-1">
+    <div className="flex flex-col items-center gap-1">
       <button
         type="button"
         onClick={handleClick}
         disabled={!navidrome.isConnected}
-        className="text-sm text-zinc-600 underline hover:text-zinc-800 disabled:cursor-not-allowed disabled:opacity-50 dark:text-zinc-400 dark:hover:text-zinc-200"
+        aria-disabled={!navidrome.isConnected}
+        className="cursor-pointer text-sm text-zinc-600 underline hover:text-zinc-800 disabled:cursor-not-allowed disabled:opacity-50 disabled:no-underline dark:text-zinc-400 dark:hover:text-zinc-200"
       >
         Continue without Spotify
       </button>
       {!navidrome.isConnected && (
-        <p className="text-xs text-zinc-500 dark:text-zinc-500">
-          Connect Navidrome first
+        <p className="cursor-pointer text-center text-xs text-zinc-500 dark:text-zinc-500">
+          Log in to Navidrome first to enable this option.
         </p>
       )}
     </div>

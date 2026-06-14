@@ -48,7 +48,7 @@ export default function Home() {
     )
   }
 
-  const isAuthenticated = navidrome.isConnected && (skipSpotify || spotify.isAuthenticated)
+  const isAuthenticated = skipSpotify || (navidrome.isConnected && spotify.isAuthenticated)
 
   if (isAuthenticated) {
     return (
