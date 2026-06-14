@@ -84,6 +84,7 @@ export function TableRow({ playlist, isSelected, onToggle, isExporting = false, 
               fill
               className="object-cover"
               sizes="48px"
+              unoptimized
             />
           ) : (
             <div className="flex h-full items-center justify-center">
