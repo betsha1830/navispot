@@ -258,6 +258,24 @@ export function Dashboard() {
           return false
         }
         const playlist: ImportedPlaylist = data.playlist
+
+        // If the playlist already lives in the user's library or in the
+        // imported list, just make sure it's selected — don't add a
+        // duplicate row. (Render-time dedup is the safety net.)
+        const ownedIds = new Set(playlists.map((p) => p.id))
+        const importedIds = new Set(importedPlaylists.map((p) => p.id))
+        if (ownedIds.has(playlist.id) || importedIds.has(playlist.id)) {
+          setSelectedIds((prev) => {
+            const next = new Set(prev)
+            next.add(playlist.id)
+            return next
+          })
+          toast.showInfo(
+            `"${playlist.name}" is already in your library — selected`,
+          )
+          return true
+        }
+
         setImportedPlaylists((prev) => {
           const filtered = prev.filter((p) => p.id !== playlist.id)
           return [...filtered, playlist]
@@ -276,7 +294,7 @@ export function Dashboard() {
         setImportingUrl(false)
       }
     },
-    [toast],
+    [toast, playlists, importedPlaylists],
   )
 
   const handleLogout = useCallback(async () => {
@@ -470,24 +488,27 @@ export function Dashboard() {
       }
     })
 
-    const importedItems: PlaylistTableItem[] = importedPlaylists.map((p) => {
-      const cachedData = trackExportCache.get(p.id)
-      return {
-        id: p.id,
-        name: p.name,
-        images: p.imageUrl ? [{ url: p.imageUrl }] : [],
-        owner: { display_name: p.owner },
-        items: { total: p.trackCount },
-        snapshot_id: "",
-        isLikedSongs: false,
-        selected: selectedIds.has(p.id),
-        exportStatus: cachedData?.exportedAt ? "exported" : "none",
-        navidromePlaylistId: cachedData?.navidromePlaylistId,
-        lastExportedAt: cachedData?.exportedAt,
-        isImported: true,
-        trackCount: p.trackCount,
-      }
-    })
+    const ownedIds = new Set(playlists.map((p) => p.id))
+    const importedItems: PlaylistTableItem[] = importedPlaylists
+      .filter((p) => !ownedIds.has(p.id))
+      .map((p) => {
+        const cachedData = trackExportCache.get(p.id)
+        return {
+          id: p.id,
+          name: p.name,
+          images: p.imageUrl ? [{ url: p.imageUrl }] : [],
+          owner: { display_name: p.owner },
+          items: { total: p.trackCount },
+          snapshot_id: "",
+          isLikedSongs: false,
+          selected: selectedIds.has(p.id),
+          exportStatus: cachedData?.exportedAt ? "exported" : "none",
+          navidromePlaylistId: cachedData?.navidromePlaylistId,
+          lastExportedAt: cachedData?.exportedAt,
+          isImported: true,
+          trackCount: p.trackCount,
+        }
+      })
 
     const allItems = [...playlistItems, ...importedItems]
     setTableItems(allItems)
@@ -618,7 +639,9 @@ export function Dashboard() {
         })
       })
 
+    const ownedIds = new Set(playlists.map((p) => p.id))
     for (const p of importedPlaylists) {
+      if (ownedIds.has(p.id)) continue
       if (!selectedIds.has(p.id)) continue
       const cachedData = trackExportCache.get(p.id)
       const hasCachedExport = !!cachedData?.navidromePlaylistId
