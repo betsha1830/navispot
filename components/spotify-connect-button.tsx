@@ -38,14 +38,15 @@ export function SpotifyConnectButton() {
   if (spotify.isAuthenticated && spotify.user) {
     return (
       <div className="flex items-center gap-3">
-        {spotify.user.images && spotify.user.images.length > 0 ? (
-          <Image
-            src={spotify.user.images[0].url}
-            alt={spotify.user.display_name}
-            width={32}
-            height={32}
-            className="rounded-full"
-          />
+          {spotify.user.images && spotify.user.images.length > 0 ? (
+            <Image
+              src={spotify.user.images[0].url}
+              alt={spotify.user.display_name}
+              width={32}
+              height={32}
+              className="rounded-full"
+              unoptimized
+            />
         ) : (
           <div className="flex h-8 w-8 items-center justify-center rounded-full bg-zinc-200 text-sm font-medium dark:bg-zinc-800">
             {spotify.user.display_name.charAt(0).toUpperCase()}

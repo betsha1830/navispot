@@ -26,7 +26,10 @@ export interface AuthContextType {
   testNavidromeConnection: (credentials: NavidromeCredentials) => Promise<boolean>;
   clearNavidromeCredentials: () => void;
   isLoading: boolean;
+  skipSpotify: boolean;
+  setSkipSpotify: (skip: boolean) => void;
 }
 
 export const SPOTIFY_STORAGE_KEY = 'navispot_spotify_auth';
 export const NAVIDROME_STORAGE_KEY = 'navispot_navidrome_auth';
+export const SKIP_SPOTIFY_STORAGE_KEY = 'navispot_skip_spotify';

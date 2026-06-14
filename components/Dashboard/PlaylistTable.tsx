@@ -165,10 +165,14 @@ interface PlaylistTableProps {
   onSort: (column: "name" | "tracks" | "owner") => void
   searchQuery: string
   onSearchChange: (query: string) => void
+  onImportClick: (url: string) => Promise<boolean> | void
+  isImporting: boolean
   isExporting?: boolean
   onRefresh?: () => void
   isRefreshing?: boolean
   loading?: boolean
+  onClear?: () => void
+  canClear?: boolean
   // Filter props
   ownerFilter: string
   onOwnerFilterChange: (owner: string) => void
@@ -270,10 +274,14 @@ export function PlaylistTable({
   onSort,
   searchQuery,
   onSearchChange,
+  onImportClick,
+  isImporting,
   isExporting = false,
   onRefresh,
   isRefreshing = false,
   loading = false,
+  onClear,
+  canClear = false,
   ownerFilter,
   onOwnerFilterChange,
   visibilityFilter,
@@ -289,9 +297,24 @@ export function PlaylistTable({
   datesLoadedCount = 0,
 }: PlaylistTableProps) {
   const [showFilters, setShowFilters] = useState(false)
+  const [showClearConfirm, setShowClearConfirm] = useState(false)
   const [popoverPosition, setPopoverPosition] = useState<"below" | "above">("below")
   const filterButtonRef = useRef<HTMLButtonElement>(null)
   const filterPanelRef = useRef<HTMLDivElement>(null)
+
+  const isSpotifyUrl = useMemo(() => {
+    const q = searchQuery.trim()
+    if (!q) return false
+    return /open\.spotify\.com\/playlist\/[A-Za-z0-9]{22}|^[A-Za-z0-9]{22}$/.test(q)
+  }, [searchQuery])
+
+  const handleImportClick = useCallback(async () => {
+    if (!isSpotifyUrl || isImporting) return
+    const ok = await onImportClick(searchQuery.trim())
+    if (ok) {
+      onSearchChange("")
+    }
+  }, [isSpotifyUrl, isImporting, onImportClick, searchQuery, onSearchChange])
 
   // Calculate popover position based on viewport space
   const [popoverStyle, setPopoverStyle] = useState<{ top: number; left: number; isReady: boolean }>({ top: 0, left: 0, isReady: false })
@@ -411,15 +434,90 @@ export function PlaylistTable({
     dateBeforeFilter,
   ].filter(Boolean).length
 
+  const clearConfirmModal = showClearConfirm && (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="clear-confirm-title"
+      className="fixed inset-0 z-50 flex items-center justify-center"
+    >
+      <div
+        className="absolute inset-0 bg-black/50 dark:bg-black/70 backdrop-blur-sm"
+        onClick={() => setShowClearConfirm(false)}
+      />
+      <div className="relative rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 w-full max-w-md mx-4 shadow-xl">
+        <div className="p-6">
+          <div className="flex items-start gap-3 mb-3">
+            <div className="flex-shrink-0 flex h-10 w-10 items-center justify-center rounded-full bg-red-100 dark:bg-red-900/30">
+              <svg
+                className="h-5 w-5 text-red-600 dark:text-red-400"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                aria-hidden="true"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 9v2m0 4h.01M5 19h14a2 2 0 001.84-2.75L13.74 4a2 2 0 00-3.48 0L3.16 16.25A2 2 0 005 19z"
+                />
+              </svg>
+            </div>
+            <div className="flex-1">
+              <h2
+                id="clear-confirm-title"
+                className="text-lg font-semibold text-zinc-900 dark:text-zinc-100"
+              >
+                Clear all imported playlists?
+              </h2>
+              <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
+                This will remove all imported public Spotify playlists from
+                the table. You&apos;ll need to re-import them by URL to export
+                them again.
+              </p>
+            </div>
+          </div>
+          <div className="mt-6 flex justify-end gap-3">
+            <button
+              type="button"
+              onClick={() => setShowClearConfirm(false)}
+              className="px-4 py-2 text-sm font-medium text-zinc-700 dark:text-zinc-300 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-lg transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                onClear?.()
+                setShowClearConfirm(false)
+              }}
+              className="px-4 py-2 text-sm font-medium text-white bg-red-500 hover:bg-red-600 dark:bg-red-600 dark:hover:bg-red-500 rounded-lg transition-colors"
+            >
+              Clear
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+
   return (
     <div className="flex flex-col h-full min-h-0">
-      <div className="flex items-center gap-4 mb-3 flex-shrink-0">
+      {clearConfirmModal}
+      <div className="flex items-center gap-2 mb-3 flex-shrink-0">
         <div className="relative flex-1 max-w-md">
           <input
             type="text"
-            placeholder="Search playlists..."
+            placeholder="Search playlists or paste a Spotify playlist URL…"
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && isSpotifyUrl && !isImporting) {
+                e.preventDefault()
+                handleImportClick()
+              }
+            }}
             disabled={isExporting}
             className="w-full pl-9 pr-10 py-2 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg text-sm text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
           />
@@ -438,8 +536,11 @@ export function PlaylistTable({
           </svg>
           {searchQuery && (
             <button
-              onClick={() => onSearchChange("")}
+              onClick={() => {
+                onSearchChange("")
+              }}
               className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
+              aria-label="Clear search"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -447,7 +548,39 @@ export function PlaylistTable({
             </button>
           )}
         </div>
-
+        <button
+          type="button"
+          onClick={handleImportClick}
+          disabled={!isSpotifyUrl || isImporting}
+          aria-label="Import public Spotify playlist"
+          title={
+            isSpotifyUrl
+              ? "Import this public Spotify playlist"
+              : "Paste a Spotify playlist URL to enable import"
+          }
+          className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium shadow-sm transition-all ${
+            isSpotifyUrl && !isImporting
+              ? "bg-green-600 text-white hover:bg-green-700 cursor-pointer"
+              : "bg-zinc-100 text-zinc-400 dark:bg-zinc-800 dark:text-zinc-500 cursor-not-allowed"
+          }`}
+        >
+          {isImporting ? (
+            <>
+              <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+              </svg>
+              <span>Importing…</span>
+            </>
+          ) : (
+            <>
+              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5-5 5 5M12 5v12" />
+              </svg>
+              <span>Import</span>
+            </>
+          )}
+        </button>
         <div className="flex items-center gap-2 text-sm text-zinc-500 dark:text-zinc-400 flex-shrink-0">
           {/* Filter Toggle Button */}
           <div className="relative">
@@ -612,6 +745,37 @@ export function PlaylistTable({
             )}
           </div>
 
+          {/* Clear Button */}
+          {onClear && (
+            <button
+              type="button"
+              onClick={() => setShowClearConfirm(true)}
+              disabled={!canClear || isExporting}
+              aria-label="Clear all imported playlists"
+              title={
+                canClear
+                  ? "Clear all imported playlists"
+                  : "No imported playlists to clear"
+              }
+              className="p-2 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-zinc-500 hover:text-red-500 hover:border-red-300 dark:hover:border-red-700 transition-all disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <svg
+                className="w-4 h-4"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M1 7h22M9 7V4a1 1 0 011-1h4a1 1 0 011 1v3"
+                />
+              </svg>
+            </button>
+          )}
+
           {/* Refresh Button */}
           <button
             onClick={onRefresh}
@@ -691,7 +855,7 @@ export function PlaylistTable({
                 </svg>
               </button>
             )}
-          </div>
+           </div>
         )}
       </div>
 
@@ -810,9 +974,29 @@ export function PlaylistTable({
                 <tr>
                   <td
                     colSpan={8}
-                    className="px-4 py-8 text-center text-sm text-zinc-500 dark:text-zinc-400"
+                    className="px-4 py-12 text-center text-sm text-zinc-500 dark:text-zinc-400"
                   >
-                    No playlists found
+                    <div className="flex flex-col items-center gap-2">
+                      <svg
+                        className="h-10 w-10 text-zinc-300 dark:text-zinc-600"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                        aria-hidden="true"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={1.5}
+                          d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2z"
+                        />
+                      </svg>
+                      <p>No playlists found.</p>
+                      <p className="text-xs">
+                        Paste a public Spotify playlist URL into the search
+                        box above and click Import.
+                      </p>
+                    </div>
                   </td>
                 </tr>
               ) : (
@@ -855,6 +1039,7 @@ export function PlaylistTable({
                           width={40}
                           height={40}
                           className="w-10 h-10 rounded-lg object-cover shadow-sm"
+                          unoptimized
                         />
                       ) : (
                         <div className="w-10 h-10 rounded-lg bg-zinc-200 dark:bg-zinc-700 flex items-center justify-center shadow-sm">

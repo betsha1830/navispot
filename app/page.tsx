@@ -4,6 +4,7 @@ import { useEffect } from "react"
 import { useAuth } from "@/lib/auth/auth-context"
 import { Dashboard } from "@/components/Dashboard"
 import { SpotifyConnectButton } from "@/components/spotify-connect-button"
+import { SkipSpotifyButton } from "@/components/skip-spotify-button"
 import { NavidromeCredentialsForm } from "@/components/navidrome-credentials-form"
 import { ErrorBoundary } from "@/components/ErrorBoundary"
 import Image from "next/image"
@@ -34,7 +35,7 @@ function GlobalErrorHandler() {
 }
 
 export default function Home() {
-  const { isLoading, spotify, navidrome } = useAuth()
+  const { isLoading, spotify, navidrome, skipSpotify } = useAuth()
 
   if (isLoading) {
     return (
@@ -47,7 +48,7 @@ export default function Home() {
     )
   }
 
-  const isAuthenticated = spotify.isAuthenticated && navidrome.isConnected
+  const isAuthenticated = skipSpotify || (navidrome.isConnected && spotify.isAuthenticated)
 
   if (isAuthenticated) {
     return (
@@ -107,8 +108,10 @@ export default function Home() {
               <SpotifyConnectButton />
             </div>
             <p className="text-sm text-zinc-500 dark:text-zinc-400">
-              Connect your Spotify account to access your playlists
+              Connect your Spotify account to access your playlists, or skip and paste
+              public playlist URLs on the dashboard.
             </p>
+            <SkipSpotifyButton />
           </div>
 
           <div>
