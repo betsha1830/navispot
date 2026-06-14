@@ -1,6 +1,7 @@
 'use client';
 
 import { ExportStatus, getExportStatusBadgeColor, getExportStatusLabel } from '@/types/playlist-table';
+import { ImportedPlaylistBadge } from './ImportedPlaylistBadge';
 import Image from 'next/image';
 
 export interface PlaylistTableItem {
@@ -15,6 +16,8 @@ export interface PlaylistTableItem {
   exportStatus: ExportStatus;
   navidromePlaylistId?: string;
   lastExportedAt?: string;
+  isImported?: boolean;
+  trackCount?: number;
 }
 
 interface TableRowProps {
@@ -101,6 +104,9 @@ export function TableRow({ playlist, isSelected, onToggle, isExporting = false, 
           <span className="truncate font-medium text-zinc-900 dark:text-zinc-100" title={playlist.name}>
             {playlist.name}
           </span>
+          {playlist.isImported && (
+            <ImportedPlaylistBadge trackCount={playlist.trackCount ?? playlist.items.total} />
+          )}
         </div>
       </td>
       <td className="px-4 py-3 w-[120px] text-sm text-zinc-600 dark:text-zinc-400">

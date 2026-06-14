@@ -12,6 +12,8 @@ export interface PlaylistTableItem {
   lastExportedAt?: string;
   public?: boolean | null;
   createdAt?: string;
+  isImported?: boolean;
+  trackCount?: number;
 }
 
 export interface ExportMetadata {

@@ -57,10 +57,19 @@ import {
 } from "@/lib/export/track-export-cache"
 import { PlaylistTableItem, PlaylistInfo } from "@/types/playlist-table"
 import { TrackMatch } from "@/types/matching"
+import { ImportedPlaylist } from "@/types/public-playlist"
+import { PublicPlaylistImport } from "@/components/PublicPlaylistImport"
+import { getJSON, setJSON } from "@/lib/storage"
 import Image from "next/image"
 import NavispotLogo from "@/public/navispot.png"
 
 const LIKED_SONGS_ID = "liked-songs"
+const IMPORTED_STORAGE_KEY = "navispot_imported_public_playlists"
+
+type ExportableItem =
+  | PlaylistItem
+  | SpotifyPlaylist
+  | (ImportedPlaylist & { isImported: true; items: { total: number } })
 
 interface PlaylistItem {
   id: string
@@ -97,6 +106,9 @@ export function Dashboard() {
   const { spotify, navidrome } = useAuth()
   const [playlists, setPlaylists] = useState<SpotifyPlaylist[]>([])
   const [tableItems, setTableItems] = useState<PlaylistTableItem[]>([])
+  const [importedPlaylists, setImportedPlaylists] = useState<ImportedPlaylist[]>(() =>
+    getJSON<ImportedPlaylist[]>(IMPORTED_STORAGE_KEY, []),
+  )
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -218,6 +230,17 @@ export function Dashboard() {
     navidrome.token,
     navidrome.clientId,
   ])
+
+  useEffect(() => {
+    setJSON(IMPORTED_STORAGE_KEY, importedPlaylists)
+  }, [importedPlaylists])
+
+  const handlePlaylistImported = useCallback((playlist: ImportedPlaylist) => {
+    setImportedPlaylists((prev) => {
+      const filtered = prev.filter((p) => p.id !== playlist.id)
+      return [...filtered, playlist]
+    })
+  }, [])
 
   const handleRefreshPlaylists = async () => {
     if (!spotify.isAuthenticated || !spotify.token) {
@@ -378,9 +401,28 @@ export function Dashboard() {
       lastExportedAt: likedSongsCachedData?.exportedAt,
     }
 
-    const allItems = [likedSongsItem, ...playlistItems]
+    const importedItems: PlaylistTableItem[] = importedPlaylists.map((p) => {
+      const cachedData = trackExportCache.get(p.id)
+      return {
+        id: p.id,
+        name: p.name,
+        images: p.imageUrl ? [{ url: p.imageUrl }] : [],
+        owner: { display_name: p.owner },
+        items: { total: p.trackCount },
+        snapshot_id: "",
+        isLikedSongs: false,
+        selected: selectedIds.has(p.id),
+        exportStatus: cachedData?.exportedAt ? "exported" : "none",
+        navidromePlaylistId: cachedData?.navidromePlaylistId,
+        lastExportedAt: cachedData?.exportedAt,
+        isImported: true,
+        trackCount: p.trackCount,
+      }
+    })
+
+    const allItems = [likedSongsItem, ...playlistItems, ...importedItems]
     setTableItems(allItems)
-  }, [playlists, navidromePlaylists, selectedIds, likedSongsCount, trackExportCache, playlistCreatedDates])
+  }, [playlists, navidromePlaylists, selectedIds, likedSongsCount, trackExportCache, playlistCreatedDates, importedPlaylists])
 
   // Background fetch of playlist created dates (earliest added_at)
   // Fetches progressively — updates state after each playlist for immediate UI feedback
@@ -795,22 +837,31 @@ export function Dashboard() {
   )
 
   const handleStartExport = async () => {
-    if (!spotify.isAuthenticated || !spotify.token || !navidrome.credentials) {
-      setError("Please connect both Spotify and Navidrome to export playlists.")
+    if (!navidrome.credentials) {
+      setError("Please connect Navidrome to export playlists.")
+      return
+    }
+    const needsSpotify = selectedIds.has(LIKED_SONGS_ID) || playlists.some((p) => selectedIds.has(p.id))
+    if (needsSpotify && (!spotify.isAuthenticated || !spotify.token)) {
+      setError("Please connect Spotify to export your own playlists.")
       return
     }
 
     const hasLikedSongs = selectedIds.has(LIKED_SONGS_ID)
     const selectedPlaylists = playlists.filter((p) => selectedIds.has(p.id))
-    const itemsToExport: (PlaylistItem | SpotifyPlaylist)[] = []
+    const selectedImported = importedPlaylists.filter((p) => selectedIds.has(p.id))
+    const itemsToExport: ExportableItem[] = []
 
     if (hasLikedSongs) {
       itemsToExport.push({
         ...LIKED_SONGS_ITEM,
-      items: { total: likedSongsCount },
+        items: { total: likedSongsCount },
       })
     }
     itemsToExport.push(...selectedPlaylists)
+    for (const p of selectedImported) {
+      itemsToExport.push({ ...p, isImported: true, items: { total: p.trackCount } })
+    }
 
     if (itemsToExport.length === 0) {
       return
@@ -840,7 +891,7 @@ export function Dashboard() {
         unmatched: 0,
         exported: 0,
         failed: 0,
-        total: item.items.total,
+        total: "items" in item ? item.items.total : (item as ImportedPlaylist).trackCount,
         status: "pending" as const,
         progress: 0,
       })),
@@ -849,7 +900,9 @@ export function Dashboard() {
     setUnmatchedSongs([])
 
     try {
-      spotifyClient.setToken(spotify.token)
+      if (spotify.token) {
+        spotifyClient.setToken(spotify.token)
+      }
       const navidromeClient = new NavidromeApiClient(
         navidrome.credentials.url,
         navidrome.credentials.username,
@@ -871,13 +924,23 @@ export function Dashboard() {
 
       for (let i = 0; i < itemsToExport.length; i++) {
         const item = itemsToExport[i]
+        const itemSnapshotId = "snapshot_id" in item ? (item.snapshot_id || "") : ""
         let progress = createInitialProgressState(0)
         setProgressState(progress)
 
         setSongExportStatus((prev) => {
           const newStatus = new Map(prev)
           const playlistStatus = new Map()
-          const songs = playlistTracksCache.get(item.id) || []
+          let songs: Song[] = playlistTracksCache.get(item.id) || []
+          if (songs.length === 0 && "isImported" in item && item.isImported) {
+            songs = item.tracks.map((t) => ({
+              spotifyTrackId: t.id,
+              title: t.name,
+              artist: t.artists.map((a) => a.name).join(", "),
+              album: t.album.name,
+              duration: formatDuration(t.duration_ms),
+            }))
+          }
           songs.forEach((song) => {
             playlistStatus.set(song.spotifyTrackId, "waiting")
           })
@@ -906,6 +969,11 @@ export function Dashboard() {
           // so differential matching engages purely on cache presence)
           cachedData = loadPlaylistExportData(item.id)
           useDifferentialMatching = !forceExportPlaylists && !!cachedData?.exportedAt
+        } else if ("isImported" in item && item.isImported) {
+          tracks = item.tracks
+          isLikedSongs = false
+          cachedData = loadPlaylistExportData(item.id)
+          useDifferentialMatching = false
         } else {
           tracks = (await spotifyClient.getAllPlaylistTracks(item.id, signal)).map(
             (t) => t.track,
@@ -914,7 +982,7 @@ export function Dashboard() {
           // Check for cached export data
           cachedData = loadPlaylistExportData(item.id)
           const upToDate = cachedData
-            ? isPlaylistUpToDate(cachedData, item.snapshot_id || "")
+            ? isPlaylistUpToDate(cachedData, itemSnapshotId)
             : false
           const hasNavidromePlaylist = !!cachedData?.navidromePlaylistId
           useDifferentialMatching = !forceExportPlaylists && hasNavidromePlaylist
@@ -1130,7 +1198,7 @@ export function Dashboard() {
 
           const playlistData: PlaylistExportData = {
             spotifyPlaylistId: item.id,
-            spotifySnapshotId: item.snapshot_id || "",
+            spotifySnapshotId: itemSnapshotId,
             playlistName: item.name,
             navidromePlaylistId: cachedData?.navidromePlaylistId,
             exportedAt: new Date().toISOString(),
@@ -1407,7 +1475,7 @@ export function Dashboard() {
 
             const updatedCache: PlaylistExportData = {
               spotifyPlaylistId: item.id,
-              spotifySnapshotId: item.snapshot_id || "",
+              spotifySnapshotId: itemSnapshotId,
               playlistName: item.name,
               navidromePlaylistId: result.playlistId,
               exportedAt: new Date().toISOString(),
@@ -1701,12 +1769,15 @@ export function Dashboard() {
     />
   )
 
-  if (!spotify.isAuthenticated) {
+  if (!spotify.isAuthenticated && importedPlaylists.length === 0) {
     return (
-      <div className="flex min-h-[400px] items-center justify-center">
+      <div className="flex min-h-[400px] flex-col items-center justify-center gap-4">
         <p className="text-gray-500">
-          Please connect your Spotify account to view playlists.
+          Connect your Spotify account, or paste a public Spotify playlist URL below to get started.
         </p>
+        <div className="w-full max-w-2xl">
+          <PublicPlaylistImport onImported={handlePlaylistImported} />
+        </div>
       </div>
     )
   }
@@ -1727,7 +1798,7 @@ export function Dashboard() {
     )
   }
 
-  if (playlists.length === 0 && likedSongsCount === 0) {
+  if (playlists.length === 0 && likedSongsCount === 0 && importedPlaylists.length === 0) {
     return (
       <div className="flex min-h-[400px] items-center justify-center">
         <p className="text-gray-500">No playlists or saved tracks found.</p>
@@ -1846,7 +1917,14 @@ export function Dashboard() {
         layout={layout}
         selectedPlaylistsSection={selectedPlaylistsSection}
         unmatchedSongsSection={songsSection}
-        mainTableSection={mainTableSection}
+        mainTableSection={
+          <div>
+            <div className="mb-4">
+              <PublicPlaylistImport onImported={handlePlaylistImported} />
+            </div>
+            {mainTableSection}
+          </div>
+        }
         fixedExportButton={fixedExportButton}
       />
     </div>
