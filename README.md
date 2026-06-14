@@ -70,19 +70,6 @@
 
 ## 🎯 How It Works
 
-### Two Spotify Access Modes
-
-**OAuth (User Auth) – for personal/private libraries**
-Standard Authorization Code with PKCE flow. Requires the user to log in to Spotify. Used for accessing the logged-in user's own playlists, liked songs, and private content. This is the "Extended Quota" mode in Spotify's terminology and requires the user to be on the app's allowlist (in development mode) or the app to be in production.
-
-**Client Credentials (Server Auth) – for public playlists only**
-The server exchanges the app's `client_id` + `client_secret` for a short-lived token, then uses that to call the public Spotify Web API. This works in Spotify's **Development Mode** without needing Extended Quota, because the calls aren't tied to a specific user. Limitations:
-- Only **public** playlists can be fetched
-- Private playlists return 404 (Spotify hides existence)
-- Server-side rate limits apply (we cache the token for its full 1-hour lifetime)
-
-This is what powers the public-playlist import — your dev-mode Spotify keys are sufficient.
-
 ### Matching Strategy Chain
 
 1. **ISRC** → Exact match via unique recording code
