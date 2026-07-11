@@ -168,6 +168,9 @@ export function Dashboard() {
 
   const isExportingRef = useRef(false)
   const abortControllerRef = useRef<AbortController | null>(null)
+  // Tracks playlist ids whose tracks are currently being fetched. Lives in a
+  // ref (not state) so the fetch effect doesn't re-fire on every setState.
+  const tracksFetchInFlightRef = useRef<Set<string>>(new Set())
 
   useEffect(() => {
     async function fetchData() {
@@ -661,9 +664,17 @@ export function Dashboard() {
 
     setSelectedPlaylistsStats(selectedPlaylists)
 
-    // Auto-check all selected playlists by default
+    // Auto-check all selected playlists by default — only commit a new Set
+    // reference when the contents actually change, so Effect B doesn't re-run
+    // for identical selections.
     if (selectedPlaylists.length > 0) {
-      setCheckedPlaylistIds(new Set(selectedPlaylists.map((p) => p.id)))
+      const nextIds = new Set(selectedPlaylists.map((p) => p.id))
+      setCheckedPlaylistIds((prev) => {
+        if (prev.size === nextIds.size && [...prev].every((id) => nextIds.has(id))) {
+          return prev
+        }
+        return nextIds
+      })
     }
   }, [selectedIds, playlists, importedPlaylists, isExporting, trackExportCache])
 
@@ -672,17 +683,25 @@ export function Dashboard() {
   // Imported playlists already have their tracks in memory (importedPlaylists),
   // so we skip them here and source directly in playlistGroups below.
   useEffect(() => {
+    let cancelled = false
+
     async function fetchTracks() {
       if (!spotify.token) return
 
       const importedIds = new Set(importedPlaylists.map((p) => p.id))
       const uncachedIds = Array.from(checkedPlaylistIds).filter(
-        (id) => !playlistTracksCache.has(id) && !importedIds.has(id),
+        (id) =>
+          !playlistTracksCache.has(id) &&
+          !importedIds.has(id) &&
+          !tracksFetchInFlightRef.current.has(id),
       )
       if (uncachedIds.length === 0) return
 
+      // Mark in-flight in the ref BEFORE any await, so re-entrant effect runs
+      // see these ids as already in flight and skip them.
+      uncachedIds.forEach((id) => tracksFetchInFlightRef.current.add(id))
       setLoadingTracks(true)
-      setLoadingPlaylistIds(new Set(uncachedIds))
+      setLoadingPlaylistIds(new Set(tracksFetchInFlightRef.current))
 
       try {
         spotifyClient.setToken(spotify.token)
@@ -690,8 +709,10 @@ export function Dashboard() {
 
         await Promise.all(
           uncachedIds.map(async (id) => {
+            if (cancelled) return
             try {
               const playlistTracks = await spotifyClient.getAllPlaylistTracks(id)
+              if (cancelled) return
               const tracks = playlistTracks.map((t) => t.track)
 
               const songs: Song[] = tracks.filter((t) => t != null).map((track) => ({
@@ -708,28 +729,29 @@ export function Dashboard() {
               console.error(`Failed to fetch tracks for playlist ${id}:`, error)
               newCache.set(id, [])
             } finally {
-              setLoadingPlaylistIds((prev) => {
-                const updated = new Set(prev)
-                updated.delete(id)
-                return updated
-              })
+              tracksFetchInFlightRef.current.delete(id)
+              setLoadingPlaylistIds(new Set(tracksFetchInFlightRef.current))
             }
           }),
         )
 
+        if (cancelled) return
         setPlaylistTracksCache(newCache)
       } catch (error) {
         console.error("Failed to fetch tracks:", error)
       } finally {
         setLoadingTracks(false)
-        if (loadingPlaylistIds.size > 0) {
+        if (!cancelled && tracksFetchInFlightRef.current.size === 0) {
           setLoadingPlaylistIds(new Set())
         }
       }
     }
 
     fetchTracks()
-  }, [checkedPlaylistIds, spotify.token, playlistTracksCache, importedPlaylists, loadingPlaylistIds])
+    return () => {
+      cancelled = true
+    }
+  }, [checkedPlaylistIds, spotify.token, playlistTracksCache, importedPlaylists])
 
   useEffect(() => {
     if (selectedIds.size === 0) return
