@@ -52,7 +52,7 @@
 
 ### Path A: With Spotify (full library access)
 
-> **Requires a Spotify Premium account** if you're using the live demo linked above, since the deployed app is in Spotify's Extended Quota mode and Premium is required to authorize it. If you're self-hosting with your own dev-mode Spotify app, any account you add to the app's allowlist will work — but the user completing the OAuth flow still needs to be on the Premium tier to authorize.
+> **Requires a Spotify Premium account** if you're using the live demo linked above, since the deployed app is in Spotify's Development mode and Premium is required to authorize it. If you're self-hosting with your own dev-mode Spotify app, any account you add to the app's allowlist will work — but the user completing the OAuth flow still needs to be on the Premium tier to authorize.
 
 1. **Connect Spotify** – Click "Connect Spotify" and authorize the app
 2. **Enter Navidrome** – Fill in your Navidrome server URL, username, and password
