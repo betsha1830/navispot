@@ -515,7 +515,25 @@ export function Dashboard() {
         }
       })
 
-    const allItems = [...playlistItems, ...importedItems]
+    const likedSongsCachedData = trackExportCache.get(LIKED_SONGS_ID)
+    const likedSongsExportStatus = likedSongsCachedData?.navidromePlaylistId ? "exported" : "none" as const
+
+    const likedSongsItem: PlaylistTableItem = {
+      id: LIKED_SONGS_ID,
+      name: "Liked Songs",
+      images: [],
+      owner: { display_name: "You" },
+      items: { total: likedSongsCount },
+      snapshot_id: "",
+      isLikedSongs: true,
+      selected: selectedIds.has(LIKED_SONGS_ID),
+      exportStatus: likedSongsExportStatus,
+      navidromePlaylistId: likedSongsCachedData?.navidromePlaylistId,
+      lastExportedAt: likedSongsCachedData?.exportedAt,
+      public: false,
+    }
+
+    const allItems = [likedSongsItem, ...playlistItems, ...importedItems]
     setTableItems(allItems)
   }, [playlists, navidromePlaylists, selectedIds, likedSongsCount, trackExportCache, playlistCreatedDates, importedPlaylists])
 
@@ -620,6 +638,23 @@ export function Dashboard() {
 
     const selectedPlaylists: SelectedPlaylist[] = []
 
+    if (selectedIds.has(LIKED_SONGS_ID)) {
+      const likedSongsCachedData = trackExportCache.get(LIKED_SONGS_ID)
+      const hasCachedExport = !!likedSongsCachedData?.navidromePlaylistId
+
+      selectedPlaylists.push({
+        id: LIKED_SONGS_ID,
+        name: "Liked Songs",
+        total: likedSongsCount,
+        matched: likedSongsCachedData?.statistics.matched ?? 0,
+        unmatched: likedSongsCachedData?.statistics.unmatched ?? 0,
+        exported: likedSongsCachedData?.statistics.matched ?? 0,
+        failed: 0,
+        status: hasCachedExport ? "exported" : "pending",
+        progress: hasCachedExport ? 100 : 0,
+      })
+    }
+
     playlists
       .filter((p) => selectedIds.has(p.id))
       .forEach((p) => {
@@ -673,7 +708,7 @@ export function Dashboard() {
         return nextIds
       })
     }
-  }, [selectedIds, playlists, importedPlaylists, isExporting, trackExportCache])
+  }, [selectedIds, playlists, importedPlaylists, isExporting, trackExportCache, likedSongsCount])
 
   // Fetch tracks for checked playlists
   // Fetch tracks for checked Spotify-owned playlists that aren't cached.
@@ -708,9 +743,14 @@ export function Dashboard() {
           uncachedIds.map(async (id) => {
             if (cancelled) return
             try {
-              const playlistTracks = await spotifyClient.getAllPlaylistTracks(id)
-              if (cancelled) return
-              const tracks = playlistTracks.map((t) => t.track)
+              let tracks
+              if (id === LIKED_SONGS_ID) {
+                const savedTracks = await spotifyClient.getAllSavedTracks()
+                tracks = savedTracks.map((t) => t.track)
+              } else {
+                const playlistTracks = await spotifyClient.getAllPlaylistTracks(id)
+                tracks = playlistTracks.map((t) => t.track)
+              }
 
               const songs: Song[] = tracks.filter((t) => t != null).map((track) => ({
                 spotifyTrackId: getTrackKey(track),
