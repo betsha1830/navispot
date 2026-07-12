@@ -1,7 +1,7 @@
 import { SpotifyPlaylistsResponse, SpotifyTracksResponse, SpotifyUser, SpotifyToken, SpotifyPlaylist, SpotifyPlaylistTrack, SpotifySavedTracksResponse, SpotifySavedTrack, SpotifyPlaylistEntry } from '@/types';
 import { isTokenExpired } from './token-storage';
 import { SPOTIFY_STORAGE_KEY } from '@/types/auth-context';
-import { spotifyRateLimiter } from './rate-limiter';
+import { spotifyRateLimiter, backgroundRateLimiter } from './rate-limiter';
 import { normalizeEntries } from './track-identity';
 
 const SPOTIFY_API_BASE = 'https://api.spotify.com/v1';
@@ -122,7 +122,7 @@ export class SpotifyClient {
    * through every page.
    */
   async getPlaylistCreatedDate(playlistId: string, signal?: AbortSignal): Promise<string | undefined> {
-    await spotifyRateLimiter.acquire();
+    await backgroundRateLimiter.acquire();
     const fields = 'items(added_at),total';
     const limit = 100;
 
@@ -150,7 +150,7 @@ export class SpotifyClient {
     // Skip if the offset lands on the page we already fetched.
     const lastOffset = total - limit;
     if (lastOffset <= 0) return earliest;
-    await spotifyRateLimiter.acquire();
+    await backgroundRateLimiter.acquire();
     const lastResponse = await this.fetch(
       `/playlists/${playlistId}/items?fields=${fields}&limit=${limit}&offset=${lastOffset}`,
       signal,

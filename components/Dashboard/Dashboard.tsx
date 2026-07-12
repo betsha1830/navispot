@@ -568,13 +568,8 @@ export function Dashboard() {
       try {
         spotifyClient.setToken(spotify.token!)
 
-        const CONCURRENCY = 1
+        const CONCURRENCY = 3
         for (let i = 0; i < missingIds.length; i += CONCURRENCY) {
-          if (cancelled) break
-
-          while (!cancelled && tracksFetchInFlightRef.current.size > 0) {
-            await new Promise((r) => setTimeout(r, 500))
-          }
           if (cancelled) break
 
           const batch = missingIds.slice(i, i + CONCURRENCY)

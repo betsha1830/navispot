@@ -41,3 +41,5 @@ export class RateLimiter {
 }
 
 export const spotifyRateLimiter = new RateLimiter(30, 60000);
+
+export const backgroundRateLimiter = new RateLimiter(5, 60000);
