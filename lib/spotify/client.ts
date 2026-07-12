@@ -1,7 +1,8 @@
-import { SpotifyPlaylistsResponse, SpotifyTracksResponse, SpotifyUser, SpotifyToken, SpotifyPlaylist, SpotifyPlaylistTrack, SpotifySavedTracksResponse, SpotifySavedTrack } from '@/types';
+import { SpotifyPlaylistsResponse, SpotifyTracksResponse, SpotifyUser, SpotifyToken, SpotifyPlaylist, SpotifyPlaylistTrack, SpotifySavedTracksResponse, SpotifySavedTrack, SpotifyPlaylistEntry } from '@/types';
 import { isTokenExpired } from './token-storage';
 import { SPOTIFY_STORAGE_KEY } from '@/types/auth-context';
 import { spotifyRateLimiter } from './rate-limiter';
+import { normalizeEntries } from './track-identity';
 
 const SPOTIFY_API_BASE = 'https://api.spotify.com/v1';
 
@@ -53,6 +54,14 @@ export class SpotifyClient {
     }
 
     return allTracks;
+  }
+
+  async getAllPlaylistEntries(playlistId: string, snapshotId: string, signal?: AbortSignal): Promise<SpotifyPlaylistEntry[]> {
+    const playlistTracks = await this.getAllPlaylistTracks(playlistId, signal);
+    const tracks = playlistTracks
+      .filter((item) => item.track != null)
+      .map((item) => item.track!);
+    return normalizeEntries(tracks, snapshotId);
   }
 
   async getSavedTracks(limit: number = 50, offset: number = 0, signal?: AbortSignal, bypassCache: boolean = false): Promise<SpotifySavedTracksResponse> {

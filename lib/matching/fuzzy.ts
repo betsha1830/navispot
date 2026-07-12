@@ -220,10 +220,15 @@ export function calculateTrackSimilarity(
   spotifyTrack: import('@/types/spotify').SpotifyTrack,
   navidromeSong: import('@/types/navidrome').NavidromeSong
 ): number {
-  const artistSimilarity = calculateArtistSimilarity(
-    spotifyTrack.artists.map((a) => a.name).join(' '),
-    navidromeSong.artist
-  );
+  const hasSpotifyArtist = spotifyTrack.artists && spotifyTrack.artists.length > 0;
+  const hasSpotifyAlbum = spotifyTrack.album && spotifyTrack.album.name && spotifyTrack.album.name.length > 0;
+
+  const artistSimilarity = hasSpotifyArtist
+    ? calculateArtistSimilarity(
+        spotifyTrack.artists.map((a) => a.name).join(' '),
+        navidromeSong.artist
+      )
+    : -1;
 
   const titleSimilarity = calculateTitleSimilarity(
     spotifyTrack.name,
@@ -235,22 +240,41 @@ export function calculateTrackSimilarity(
     navidromeSong.duration
   );
 
-  const albumSimilarity = calculateAlbumSimilarity(
-    spotifyTrack.album.name,
-    navidromeSong.album
-  );
+  const albumSimilarity = hasSpotifyAlbum
+    ? calculateAlbumSimilarity(spotifyTrack.album.name, navidromeSong.album)
+    : -1;
 
-  let baseSimilarity = artistSimilarity * 0.25 + titleSimilarity * 0.35 + durationSimilarity * 0.25 + albumSimilarity * 0.15;
+  let availableWeight = 0;
+  let weightedSum = 0;
 
-  if (titleSimilarity === 1.0 && artistSimilarity >= 0.3) {
-    return Math.max(artistSimilarity * 0.2 + titleSimilarity * 0.4 + durationSimilarity * 0.3 + albumSimilarity * 0.1, 0.85);
+  if (artistSimilarity >= 0) {
+    weightedSum += artistSimilarity * 0.25;
+    availableWeight += 0.25;
+  }
+  weightedSum += titleSimilarity * 0.35;
+  availableWeight += 0.35;
+  weightedSum += durationSimilarity * 0.25;
+  availableWeight += 0.25;
+
+  if (albumSimilarity >= 0) {
+    weightedSum += albumSimilarity * 0.15;
+    availableWeight += 0.15;
   }
 
-  if (durationSimilarity >= 0.9 && artistSimilarity >= 0.3) {
+  let baseSimilarity = availableWeight > 0 ? weightedSum / availableWeight : titleSimilarity;
+
+  if (titleSimilarity === 1.0 && (artistSimilarity < 0 || artistSimilarity >= 0.3)) {
+    return Math.max(
+      (artistSimilarity >= 0 ? artistSimilarity * 0.2 : 0) + titleSimilarity * 0.4 + durationSimilarity * 0.3 + (albumSimilarity >= 0 ? albumSimilarity * 0.1 : 0),
+      0.85
+    );
+  }
+
+  if (durationSimilarity >= 0.9 && (artistSimilarity < 0 || artistSimilarity >= 0.3)) {
     baseSimilarity = Math.min(baseSimilarity + 0.1, 0.95);
   }
 
-  if (albumSimilarity >= 0.8 && titleSimilarity >= 0.6 && artistSimilarity >= 0.4) {
+  if (albumSimilarity >= 0.8 && titleSimilarity >= 0.6 && (artistSimilarity < 0 || artistSimilarity >= 0.4)) {
     baseSimilarity = Math.min(baseSimilarity + 0.05, 0.95);
   }
 
@@ -268,10 +292,9 @@ export function findBestMatch(
 
   const scoredMatches: FuzzyMatchResult[] = candidates
     .map((song) => {
-      const albumSim = calculateAlbumSimilarity(
-        spotifyTrack.album.name,
-        song.album
-      );
+      const albumSim = spotifyTrack.album?.name
+        ? calculateAlbumSimilarity(spotifyTrack.album.name, song.album)
+        : -1;
       const score = calculateTrackSimilarity(spotifyTrack, song);
 
       return {

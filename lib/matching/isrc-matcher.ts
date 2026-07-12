@@ -1,6 +1,7 @@
 import { SpotifyTrack } from '@/types/spotify';
 import { TrackMatch } from '@/types/matching';
 import { NavidromeApiClient } from '@/lib/navidrome/client';
+import { trackKey as getTrackKey } from '@/lib/spotify/track-identity';
 
 export async function matchByISRC(
   _client: NavidromeApiClient,
@@ -14,6 +15,7 @@ export async function matchByISRC(
       matchStrategy: 'isrc',
       matchScore: 0,
       status: 'unmatched',
+      trackKey: getTrackKey(spotifyTrack),
     };
   }
 
@@ -22,5 +24,6 @@ export async function matchByISRC(
     matchStrategy: 'isrc',
     matchScore: 0,
     status: 'unmatched',
+    trackKey: getTrackKey(spotifyTrack),
   };
 }

@@ -11,4 +11,6 @@ export interface TrackMatch {
   matchStrategy: MatchStrategy;
   status: MatchStatus;
   candidates?: NavidromeSong[];
+  trackKey: string;
+  entryKey?: string;
 }

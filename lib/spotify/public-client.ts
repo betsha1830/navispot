@@ -1,6 +1,7 @@
 import https from 'node:https';
 import type { SpotifyTrack } from '@/types/spotify';
 import type { ImportedPlaylist } from '@/types/public-playlist';
+import { normalizeEntries } from './track-identity';
 
 const SPOTIFY_API_BASE = 'https://api.spotify.com/v1';
 const SPOTIFY_AUTH_BASE = 'https://accounts.spotify.com/api/token';
@@ -108,7 +109,8 @@ export function extractPlaylistId(input: string): string | null {
 }
 
 async function spotifyGet<T>(token: string, path: string): Promise<T> {
-  const res = await httpsRequest<T>(`${SPOTIFY_API_BASE}${path}`, {
+  const url = path.startsWith('https://') ? path : `${SPOTIFY_API_BASE}${path}`;
+  const res = await httpsRequest<T>(url, {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (res.status !== 200) {
@@ -127,11 +129,19 @@ interface PlaylistMeta {
   owner: { display_name: string };
   images: { url: string }[];
   tracks: { total: number };
+  snapshot_id?: string;
+}
+
+interface SpotifyTrackItem {
+  track: SpotifyTrack | null;
+  is_local?: boolean;
+  added_at?: string;
 }
 
 interface PlaylistTracksPage {
-  items: Array<{ track: SpotifyTrack | null; is_local?: boolean }>;
+  items: SpotifyTrackItem[];
   next: string | null;
+  snapshot_id?: string;
 }
 
 export async function getPublicPlaylist(
@@ -141,20 +151,30 @@ export async function getPublicPlaylist(
 
   const meta = await spotifyGet<PlaylistMeta>(
     token,
-    `/playlists/${playlistId}?fields=id,name,owner(display_name),images,tracks(total)`,
+    `/playlists/${playlistId}?fields=id,name,owner(display_name),images,tracks(total),snapshot_id`,
   );
 
   const tracks: SpotifyTrack[] = [];
+  let nullTrackCount = 0;
   let nextPath: string | null =
-    `/playlists/${playlistId}/tracks?fields=items(track(id,name,artists(id,name),album(id,name,release_date),duration_ms,external_ids,external_urls),is_local,added_at),next&limit=100`;
+    `/playlists/${playlistId}/tracks?fields=items(track(id,name,artists(id,name),album(id,name,release_date),duration_ms,external_ids,external_urls,uri,is_local),is_local,added_at),next,snapshot_id&limit=100`;
   while (nextPath) {
     const page: PlaylistTracksPage = await spotifyGet<PlaylistTracksPage>(token, nextPath);
     for (const item of page.items) {
-      if (item.is_local) continue;
-      if (item.track) tracks.push(item.track);
+      if (item.track) {
+        const track = item.track;
+        if (item.is_local) {
+          track.is_local = true;
+        }
+        tracks.push(track);
+      } else {
+        nullTrackCount++;
+      }
     }
     nextPath = page.next;
   }
+
+  const entries = normalizeEntries(tracks, meta.snapshot_id);
 
   return {
     id: meta.id,
@@ -163,6 +183,9 @@ export async function getPublicPlaylist(
     trackCount: tracks.length,
     imageUrl: meta.images?.[0]?.url,
     tracks,
+    entries,
+    sourceRevision: meta.snapshot_id,
+    nullTrackCount,
     importedAt: new Date().toISOString(),
   };
 }

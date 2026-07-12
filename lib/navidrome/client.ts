@@ -299,7 +299,9 @@ export class NavidromeApiClient {
   async createPlaylist(name: string, songIds: string[], signal?: AbortSignal): Promise<{
     id: string;
     success: boolean;
+    error?: string;
   }> {
+    await this._ensureAuthenticated();
     try {
       const createResponse = await fetch(`${this.baseUrl}/api/playlist`, {
         method: 'POST',
@@ -313,14 +315,14 @@ export class NavidromeApiClient {
       });
 
       if (!createResponse.ok) {
-        return { success: false, id: '' };
+        return { success: false, id: '', error: `Create failed: ${createResponse.status}` };
       }
 
       const createData = await createResponse.json() as { id: string };
       const playlistId = createData.id;
 
       if (songIds.length > 0) {
-        await fetch(`${this.baseUrl}/api/playlist/${playlistId}/tracks`, {
+        const addResponse = await fetch(`${this.baseUrl}/api/playlist/${playlistId}/tracks`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -330,11 +332,18 @@ export class NavidromeApiClient {
           body: JSON.stringify({ ids: songIds }),
           signal,
         });
+
+        if (!addResponse.ok) {
+          return { success: false, id: playlistId, error: `Track insert failed: ${addResponse.status}` };
+        }
       }
 
       return { success: true, id: playlistId };
-    } catch {
-      return { success: false, id: '' };
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        throw error;
+      }
+      return { success: false, id: '', error: error instanceof Error ? error.message : 'Unknown error' };
     }
   }
 
@@ -343,10 +352,11 @@ export class NavidromeApiClient {
     songIdsToAdd: string[],
     songIdsToRemove?: number[],
     signal?: AbortSignal
-  ): Promise<{ success: boolean }> {
+  ): Promise<{ success: boolean; error?: string }> {
+    await this._ensureAuthenticated();
     try {
       if (songIdsToAdd.length > 0) {
-        await fetch(`${this.baseUrl}/api/playlist/${playlistId}/tracks`, {
+        const addResponse = await fetch(`${this.baseUrl}/api/playlist/${playlistId}/tracks`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -356,11 +366,15 @@ export class NavidromeApiClient {
           body: JSON.stringify({ ids: songIdsToAdd }),
           signal,
         });
+
+        if (!addResponse.ok) {
+          return { success: false, error: `Add tracks failed: ${addResponse.status}` };
+        }
       }
 
       if (songIdsToRemove && songIdsToRemove.length > 0) {
         const removeParams = songIdsToRemove.map((id) => `id=${id + 1}`).join('&');
-        await fetch(`${this.baseUrl}/api/playlist/${playlistId}/tracks?${removeParams}`, {
+        const removeResponse = await fetch(`${this.baseUrl}/api/playlist/${playlistId}/tracks?${removeParams}`, {
           method: 'DELETE',
           headers: {
             'x-nd-authorization': `Bearer ${this._ndToken}`,
@@ -368,23 +382,66 @@ export class NavidromeApiClient {
           },
           signal,
         });
+
+        if (!removeResponse.ok) {
+          return { success: false, error: `Remove tracks failed: ${removeResponse.status}` };
+        }
       }
 
       return { success: true };
-    } catch {
-      return { success: false };
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        throw error;
+      }
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
     }
   }
 
-  async replacePlaylistSongs(playlistId: string, newSongIds: string[], signal?: AbortSignal): Promise<{ success: boolean }> {
+  async replacePlaylistSongs(playlistId: string, newSongIds: string[], signal?: AbortSignal): Promise<{ success: boolean; error?: string }> {
+    await this._ensureAuthenticated();
     try {
       const playlistData = await this.getPlaylist(playlistId, signal);
       const entryIdsToRemove = playlistData.tracks.map((_, index) => index);
 
-      await this.updatePlaylist(playlistId, newSongIds, entryIdsToRemove, signal);
+      if (entryIdsToRemove.length > 0) {
+        const removeParams = entryIdsToRemove.map((id) => `id=${id + 1}`).join('&');
+        const removeResponse = await fetch(`${this.baseUrl}/api/playlist/${playlistId}/tracks?${removeParams}`, {
+          method: 'DELETE',
+          headers: {
+            'x-nd-authorization': `Bearer ${this._ndToken}`,
+            'x-nd-client-unique-id': `${this._ndClientId}`,
+          },
+          signal,
+        });
+
+        if (!removeResponse.ok) {
+          return { success: false, error: `Remove failed: ${removeResponse.status}` };
+        }
+      }
+
+      if (newSongIds.length > 0) {
+        const addResponse = await fetch(`${this.baseUrl}/api/playlist/${playlistId}/tracks`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-nd-authorization': `Bearer ${this._ndToken}`,
+            'x-nd-client-unique-id': `${this._ndClientId}`,
+          },
+          body: JSON.stringify({ ids: newSongIds }),
+          signal,
+        });
+
+        if (!addResponse.ok) {
+          return { success: false, error: `Add failed: ${addResponse.status}` };
+        }
+      }
+
       return { success: true };
-    } catch {
-      return { success: false };
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        throw error;
+      }
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
     }
   }
 

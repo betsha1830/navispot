@@ -4,6 +4,7 @@ import { TrackMatch, MatchStrategy, MatchStatus } from '@/types/matching';
 import { NavidromeApiClient } from '@/lib/navidrome/client';
 import { matchByStrict } from './strict-matcher';
 import { findBestMatch, normalizeTitle, normalizeArtistName } from './fuzzy';
+import { trackKey as getTrackKey } from '@/lib/spotify/track-identity';
 
 export interface MatchingOrchestratorOptions {
   enableISRC: boolean;
@@ -55,6 +56,7 @@ export async function matchTrack(
   signal?: AbortSignal
 ): Promise<TrackMatch> {
   if (!spotifyTrack || !spotifyTrack.name) {
+    const tk = spotifyTrack ? getTrackKey(spotifyTrack) : 'unknown';
     console.warn("Invalid Spotify track encountered:", {
       track: spotifyTrack,
       hasName: spotifyTrack?.name ? true : false,
@@ -67,8 +69,11 @@ export async function matchTrack(
       matchStrategy: "none",
       matchScore: 0,
       status: "unmatched",
+      trackKey: tk,
     };
   }
+
+  const trackTk = getTrackKey(spotifyTrack);
 
   const opts: MatchingOrchestratorOptions = { ...defaultMatchingOptions, ...options };
   const strategyResults: MatchingStrategyResult[] = [];
@@ -94,6 +99,7 @@ export async function matchTrack(
         matchStrategy: 'isrc',
         matchScore: 1,
         status: 'matched',
+        trackKey: trackTk,
       };
     }
 
@@ -126,6 +132,7 @@ export async function matchTrack(
           matchStrategy: 'isrc',
           matchScore: 1,
           status: 'matched',
+          trackKey: trackTk,
         };
       }
     }
@@ -151,6 +158,7 @@ export async function matchTrack(
         matchScore: fuzzyResult.bestMatch.score,
         status: 'matched',
         candidates: fuzzyResult.matches.map((m) => m.song),
+        trackKey: trackTk,
       };
     }
   }
@@ -172,6 +180,7 @@ export async function matchTrack(
         matchStrategy: 'strict',
         matchScore: 1,
         status: 'matched',
+        trackKey: trackTk,
       };
     }
   }
@@ -189,6 +198,7 @@ export async function matchTrack(
     matchScore: bestResult.score > 0 ? bestResult.score : 0,
     status: hasAmbiguous ? 'ambiguous' : 'unmatched',
     candidates: bestResult.candidates,
+    trackKey: trackTk,
   };
 }
 
@@ -219,6 +229,7 @@ export async function matchTracks(
         matchStrategy: "none",
         matchScore: 0,
         status: "unmatched",
+        trackKey: getTrackKey(track),
       });
     }
   }

@@ -1,4 +1,4 @@
-import type { SpotifyTrack } from './spotify';
+import type { SpotifyTrack, SpotifyPlaylistEntry } from './spotify';
 
 export interface ImportedPlaylist {
   id: string;
@@ -7,6 +7,9 @@ export interface ImportedPlaylist {
   trackCount: number;
   imageUrl?: string;
   tracks: SpotifyTrack[];
+  entries: SpotifyPlaylistEntry[];
+  sourceRevision?: string;
+  nullTrackCount: number;
   importedAt: string;
 }
 

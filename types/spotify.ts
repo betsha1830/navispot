@@ -1,11 +1,13 @@
 export interface SpotifyTrack {
-  id: string;
+  id: string | null;
   name: string;
-  artists: { id: string; name: string }[];
-  album: { id: string; name: string; release_date: string };
+  uri?: string;
+  is_local?: boolean;
+  artists: { id: string | null; name: string }[];
+  album: { id: string | null; name: string; release_date?: string };
   duration_ms: number;
   external_ids: { isrc?: string };
-  external_urls: { spotify: string };
+  external_urls?: { spotify: string };
 }
 
 export interface SpotifyPlaylist {
@@ -20,12 +22,19 @@ export interface SpotifyPlaylist {
 }
 
 export interface SpotifyPlaylistTrack {
-  track: SpotifyTrack;
+  track: SpotifyTrack | null;
   added_at: string;
-  added_by: {
+  added_by?: {
     id: string;
     display_name: string;
   };
+}
+
+export interface SpotifyPlaylistEntry {
+  track: SpotifyTrack;
+  trackKey: string;
+  entryKey: string;
+  position: number;
 }
 
 export interface SpotifyPlaylistsResponse {

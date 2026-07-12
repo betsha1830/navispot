@@ -164,7 +164,7 @@ function UnmatchedTrackItem({ match, index, onViewDetails }: UnmatchedTrackItemP
           </div>
           {onViewDetails && (
             <button
-              onClick={() => onViewDetails(match.spotifyTrack.id)}
+              onClick={() => onViewDetails(match.spotifyTrack.id || match.trackKey)}
               className="mt-3 text-sm text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300"
             >
               View Details →
@@ -295,7 +295,7 @@ export function ResultsReport({ result, onExportAgain, onBackToDashboard, onView
                   .slice(0, 20)
                   .map((match, index) => (
                     <UnmatchedTrackItem
-                      key={match.spotifyTrack.id}
+                      key={match.spotifyTrack.uri || match.spotifyTrack.id || match.trackKey}
                       match={match}
                       index={index}
                       onViewDetails={onViewDetails}

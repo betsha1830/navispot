@@ -15,11 +15,12 @@ function formatDuration(ms: number): string {
   return `${minutes}:${seconds.toString().padStart(2, '0')}`;
 }
 
-function getMatchForTrack(trackId: string, matches: TrackMatch[]): TrackMatch | undefined {
-  return matches.find((m) => m.spotifyTrack.id === trackId);
+function getMatchForTrack(track: SpotifyTrack, matches: TrackMatch[]): TrackMatch | undefined {
+  return matches.find((m) => m.spotifyTrack === track || m.trackKey === (track.uri || `spotify:track:${track.id}`));
 }
 
 export function TrackList({ tracks, matches }: TrackListProps) {
+  const allMatches = matches;
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
@@ -35,16 +36,15 @@ export function TrackList({ tracks, matches }: TrackListProps) {
         </thead>
         <tbody className="divide-y divide-zinc-200 dark:divide-zinc-800">
           {tracks.map((trackWrapper, index) => {
-            const track: SpotifyTrack = trackWrapper.track;
-            const match = getMatchForTrack(track.id, matches);
-
+            const track: SpotifyTrack | null = trackWrapper.track;
             if (!track) return null;
+            const match = getMatchForTrack(track, allMatches);
 
             const artistNames = track.artists.map((a) => a.name).join(', ');
 
             return (
               <tr
-                key={track.id}
+                key={track.uri || track.id || index}
                 className="hover:bg-zinc-50 dark:hover:bg-zinc-900/50 transition-colors"
               >
                 <td className="py-3 px-4 text-zinc-500 dark:text-zinc-400">

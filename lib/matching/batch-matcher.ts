@@ -1,9 +1,10 @@
 import { SpotifyClient } from '@/lib/spotify/client';
 import { NavidromeApiClient } from '@/lib/navidrome/client';
-import { SpotifyPlaylistTrack, SpotifyTrack } from '@/types/spotify';
+import { SpotifyPlaylistTrack, SpotifyTrack, SpotifyPlaylistEntry } from '@/types/spotify';
 import { TrackMatch, MatchStrategy } from '@/types/matching';
 import { matchTracks, getMatchStatistics, MatchingOrchestratorOptions as OrchestratorOptions, defaultMatchingOptions } from './orchestrator';
 import { TrackExportStatus } from '@/lib/export/track-export-cache';
+import { trackKey as getTrackKey } from '@/lib/spotify/track-identity';
 
 export interface BatchMatcherProgress {
   current: number;
@@ -82,7 +83,7 @@ export class DefaultBatchMatcher implements BatchMatcher {
     const playlistName = 'Playlist';
 
     const result = await this.matchTracks(
-      tracks.map((t: SpotifyPlaylistTrack) => t.track),
+      tracks.map((t: SpotifyPlaylistTrack) => t.track).filter((t): t is SpotifyTrack => t != null),
       { ...matcherOptions, signal },
       onProgress
     );
@@ -221,7 +222,8 @@ export class DefaultBatchMatcher implements BatchMatcher {
     const tracksFromCache: Array<{ track: SpotifyTrack; cachedStatus: TrackExportStatus }> = [];
 
     tracks.forEach(track => {
-      const cachedStatus = cachedTracks[track.id];
+      const tk = getTrackKey(track);
+      const cachedStatus = cachedTracks[tk];
       if (cachedStatus) {
         tracksFromCache.push({ track, cachedStatus });
       } else {
@@ -266,6 +268,7 @@ export class DefaultBatchMatcher implements BatchMatcher {
     }
 
     const cachedMatches: TrackMatch[] = tracksFromCache.map(({ track, cachedStatus }) => {
+      const tk = getTrackKey(track);
       if (cachedStatus.status === 'matched' || cachedStatus.status === 'ambiguous') {
         const navidromeSong = cachedStatus.navidromeSongId ? {
           id: cachedStatus.navidromeSongId,
@@ -283,6 +286,7 @@ export class DefaultBatchMatcher implements BatchMatcher {
           matchStrategy: cachedStatus.matchStrategy as MatchStrategy,
           status: cachedStatus.status,
           candidates: undefined,
+          trackKey: tk,
         };
       } else {
         return {
@@ -292,6 +296,7 @@ export class DefaultBatchMatcher implements BatchMatcher {
           matchStrategy: 'none' as MatchStrategy,
           status: cachedStatus.status,
           candidates: undefined,
+          trackKey: tk,
         };
       }
     });
@@ -300,21 +305,23 @@ export class DefaultBatchMatcher implements BatchMatcher {
     const trackMap = new Map<string, TrackMatch>();
 
     tracks.forEach(track => {
-      const cachedStatus = cachedTracks[track.id];
+      const tk = getTrackKey(track);
+      const cachedStatus = cachedTracks[tk];
       if (cachedStatus) {
-        const cachedMatch = cachedMatches.find(m => m.spotifyTrack.id === track.id);
+        const cachedMatch = cachedMatches.find(m => m.trackKey === tk);
         if (cachedMatch) {
-          trackMap.set(track.id, cachedMatch);
+          trackMap.set(tk, cachedMatch);
         }
       }
     });
 
     newMatches.forEach(match => {
-      trackMap.set(match.spotifyTrack.id, match);
+      trackMap.set(match.trackKey, match);
     });
 
     tracks.forEach(track => {
-      const match = trackMap.get(track.id);
+      const tk = getTrackKey(track);
+      const match = trackMap.get(tk);
       if (match) {
         allMatches.push(match);
       }

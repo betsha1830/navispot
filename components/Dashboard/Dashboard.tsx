@@ -53,6 +53,7 @@ import {
   isPlaylistUpToDate,
   deletePlaylistExportData,
   type PlaylistExportData,
+  type PlaylistExportDataV2,
   type TrackExportStatus,
 } from "@/lib/export/track-export-cache"
 import { PlaylistTableItem, PlaylistInfo } from "@/types/playlist-table"
@@ -60,6 +61,7 @@ import { TrackMatch } from "@/types/matching"
 import { ImportedPlaylist } from "@/types/public-playlist"
 import { useToast } from "@/components/Toast"
 import { getJSON, setJSON } from "@/lib/storage"
+import { trackKey as getTrackKey } from "@/lib/spotify/track-identity"
 import Image from "next/image"
 import NavispotLogo from "@/public/navispot.png"
 
@@ -160,7 +162,7 @@ export function Dashboard() {
     Map<string, Map<string, "waiting" | "exported" | "failed">>
   >(new Map())
   const [trackExportCache, setTrackExportCache] = useState<
-    Map<string, PlaylistExportData>
+    Map<string, PlaylistExportData | PlaylistExportDataV2>
   >(new Map())
   const [playlistCreatedDates, setPlaylistCreatedDates] = useState<Map<string, string>>(new Map())
   const [fetchingDates, setFetchingDates] = useState(false)
@@ -716,7 +718,7 @@ export function Dashboard() {
               const tracks = playlistTracks.map((t) => t.track)
 
               const songs: Song[] = tracks.filter((t) => t != null).map((track) => ({
-                spotifyTrackId: track.id,
+                spotifyTrackId: getTrackKey(track),
                 title: track.name,
                 album: track.album?.name || "Unknown",
                 artist:
@@ -769,8 +771,8 @@ export function Dashboard() {
         if (songs) {
           songs.forEach((song) => {
             const trackId = song.spotifyTrackId
-            if (cachedData.tracks[trackId]) {
-              const cachedStatus = cachedData.tracks[trackId]
+            const cachedStatus = cachedData.tracks[trackId]
+            if (cachedStatus) {
               playlistStatus.set(
                 trackId,
                 cachedStatus.status === "matched" ? "exported" : "failed",
@@ -1043,7 +1045,7 @@ export function Dashboard() {
           let songs: Song[] = playlistTracksCache.get(item.id) || []
           if (songs.length === 0 && "isImported" in item && item.isImported) {
             songs = item.tracks.map((t) => ({
-              spotifyTrackId: t.id,
+              spotifyTrackId: getTrackKey(t),
               title: t.name,
               artist: t.artists.map((a) => a.name).join(", "),
               album: t.album.name,
@@ -1066,7 +1068,7 @@ export function Dashboard() {
 
         let tracks: SpotifyTrack[]
         let isLikedSongs = false
-        let cachedData: PlaylistExportData | undefined = undefined
+        let cachedData: PlaylistExportData | PlaylistExportDataV2 | undefined = undefined
         let useDifferentialMatching = false
 
         if ("isLikedSongs" in item && item.isLikedSongs) {
@@ -1152,9 +1154,11 @@ export function Dashboard() {
                     match.status === "matched" ||
                     match.status === "ambiguous"
                   ) {
-                    playlistStatus.set(match.spotifyTrack.id, "exported")
+                    const key = getTrackKey(match.spotifyTrack)
+                    playlistStatus.set(key, "exported")
                   } else {
-                    playlistStatus.set(match.spotifyTrack.id, "failed")
+                    const key = getTrackKey(match.spotifyTrack)
+                    playlistStatus.set(key, "failed")
                   }
                   newStatus.set(item.id, playlistStatus)
                   return newStatus
@@ -1211,9 +1215,9 @@ export function Dashboard() {
                       match.status === "matched" ||
                       match.status === "ambiguous"
                     ) {
-                      playlistStatus.set(match.spotifyTrack.id, "exported")
+                      playlistStatus.set(getTrackKey(match.spotifyTrack), "exported")
                     } else {
-                      playlistStatus.set(match.spotifyTrack.id, "failed")
+                      playlistStatus.set(getTrackKey(match.spotifyTrack), "failed")
                     }
                     newStatus.set(item.id, playlistStatus)
                     return newStatus
@@ -1240,7 +1244,8 @@ export function Dashboard() {
           ),
         )
 
-        // Save track status to cache after matching
+        // Build pending track status data but DO NOT save yet.
+        // Cache is only committed after exporter success.
         if (!isLikedSongs) {
           const tracksData: Record<string, TrackExportStatus> = {}
           let matchedCount = 0
@@ -1251,15 +1256,16 @@ export function Dashboard() {
             tracks.forEach((track, index) => {
               const match = matches[index]
               if (match) {
+                const tk = getTrackKey(track)
                 const status: TrackExportStatus = {
-                  spotifyTrackId: track.id,
+                  spotifyTrackId: track.id || tk,
                   navidromeSongId: match.navidromeSong?.id,
                   status: match.status,
                   matchStrategy: match.matchStrategy,
                   matchScore: match.matchScore,
                   matchedAt: new Date().toISOString(),
                 }
-                tracksData[track.id] = status
+                tracksData[tk] = status
 
                 if (match.status === "matched") {
                   matchedCount++
@@ -1271,9 +1277,9 @@ export function Dashboard() {
               }
             })
           } else if (useDifferentialMatching && cachedData) {
-            Object.keys(cachedData.tracks).forEach((spotifyTrackId) => {
-              tracksData[spotifyTrackId] = cachedData.tracks[spotifyTrackId]
-              const cachedStatus = cachedData.tracks[spotifyTrackId]
+            Object.keys(cachedData.tracks).forEach((key) => {
+              tracksData[key] = cachedData.tracks[key]
+              const cachedStatus = cachedData.tracks[key]
               if (cachedStatus.status === "matched") {
                 matchedCount++
               } else if (cachedStatus.status === "ambiguous") {
@@ -1283,17 +1289,18 @@ export function Dashboard() {
               }
             })
             newTracks.forEach((track) => {
-              const match = matches.find((m) => m.spotifyTrack.id === track.id)
+              const match = matches.find((m) => getTrackKey(m.spotifyTrack) === getTrackKey(track))
               if (match) {
+                const tk = getTrackKey(track)
                 const status: TrackExportStatus = {
-                  spotifyTrackId: track.id,
+                  spotifyTrackId: track.id || tk,
                   navidromeSongId: match.navidromeSong?.id,
                   status: match.status,
                   matchStrategy: match.matchStrategy,
                   matchScore: match.matchScore,
                   matchedAt: new Date().toISOString(),
                 }
-                tracksData[track.id] = status
+                tracksData[tk] = status
                 if (match.status === "matched") {
                   matchedCount++
                 } else if (match.status === "ambiguous") {
@@ -1305,26 +1312,11 @@ export function Dashboard() {
             })
           }
 
-          const playlistData: PlaylistExportData = {
-            spotifyPlaylistId: item.id,
-            spotifySnapshotId: itemSnapshotId,
-            playlistName: item.name,
-            navidromePlaylistId: cachedData?.navidromePlaylistId,
-            exportedAt: new Date().toISOString(),
-            trackCount: tracks.length,
-            tracks: tracksData,
-            statistics: {
-              total: tracks.length,
-              matched: matchedCount,
-              unmatched: unmatchedCount,
-              ambiguous: ambiguousCount,
-            },
-          }
-
-          savePlaylistExportData(item.id, playlistData)
-          setTrackExportCache((prev) =>
-            new Map(prev).set(item.id, playlistData),
-          )
+          // Keep as pending data — commit only after exporter success
+          void tracks;
+          void matchedCount;
+          void unmatchedCount;
+          void ambiguousCount;
         }
 
         const unmatchedSongsList: UnmatchedSong[] = matches
@@ -1414,13 +1406,14 @@ export function Dashboard() {
 
           matches.forEach((match) => {
             const track = match.spotifyTrack
+            const tk = getTrackKey(track)
             const isFromCache =
-              cachedData?.tracks[track.id] &&
-              !newTracks.some((t) => t.id === track.id)
+              cachedData?.tracks[tk] &&
+              !newTracks.some((t) => getTrackKey(t) === tk)
 
             if (isFromCache && cachedData) {
-              tracksData[track.id] = cachedData.tracks[track.id]
-              const cachedStatus = cachedData.tracks[track.id]
+              tracksData[tk] = cachedData.tracks[tk]
+              const cachedStatus = cachedData.tracks[tk]
               if (cachedStatus.status === "matched") {
                 matchedCount++
               } else if (cachedStatus.status === "ambiguous") {
@@ -1429,8 +1422,8 @@ export function Dashboard() {
                 unmatchedCount++
               }
             } else {
-              tracksData[track.id] = {
-                spotifyTrackId: track.id,
+              tracksData[tk] = {
+                spotifyTrackId: track.id || tk,
                 navidromeSongId: match.navidromeSong?.id,
                 status: match.status,
                 matchStrategy: match.matchStrategy,
@@ -1545,13 +1538,14 @@ export function Dashboard() {
 
             matches.forEach((match) => {
               const track = match.spotifyTrack
+              const tk = getTrackKey(track)
               const isFromCache =
-                cachedData?.tracks[track.id] &&
-                !newTracks.some((t) => t.id === track.id)
+                cachedData?.tracks[tk] &&
+                !newTracks.some((t) => getTrackKey(t) === tk)
 
               if (isFromCache && cachedData) {
-                tracksData[track.id] = cachedData.tracks[track.id]
-                const cachedStatus = cachedData.tracks[track.id]
+                tracksData[tk] = cachedData.tracks[tk]
+                const cachedStatus = cachedData.tracks[tk]
                 if (cachedStatus.status === "matched") {
                   matchedCount++
                 } else if (cachedStatus.status === "ambiguous") {
@@ -1560,8 +1554,8 @@ export function Dashboard() {
                   unmatchedCount++
                 }
               } else {
-                tracksData[track.id] = {
-                  spotifyTrackId: track.id,
+                tracksData[tk] = {
+                  spotifyTrackId: track.id || tk,
                   navidromeSongId: match.navidromeSong?.id,
                   status: match.status,
                   matchStrategy: match.matchStrategy,
@@ -1736,7 +1730,7 @@ export function Dashboard() {
           const imported = importedById.get(playlist.id)
           if (imported) {
             songs = imported.tracks.map((t) => ({
-              spotifyTrackId: t.id,
+              spotifyTrackId: getTrackKey(t),
               title: t.name,
               album: t.album.name,
               artist: t.artists.map((a) => a.name).join(", "),

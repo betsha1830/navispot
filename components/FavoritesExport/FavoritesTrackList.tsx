@@ -2,6 +2,7 @@
 
 import { SpotifySavedTrack } from '@/types/spotify';
 import { TrackMatch } from '@/types/matching';
+import { trackKey as getTrackKey } from '@/lib/spotify/track-identity';
 
 interface FavoritesTrackListProps {
   tracks: SpotifySavedTrack[];
@@ -103,19 +104,21 @@ export function FavoritesTrackList({ tracks, matches, isLoading }: FavoritesTrac
     );
   }
 
-  const matchedIds = new Set(matches.filter(m => m.status === 'matched').map(m => m.spotifyTrack.id));
-  const ambiguousIds = new Set(matches.filter(m => m.status === 'ambiguous').map(m => m.spotifyTrack.id));
-  const unmatchedIds = new Set(matches.filter(m => m.status === 'unmatched').map(m => m.spotifyTrack.id));
+  const matchedIds = new Set(matches.filter(m => m.status === 'matched').map(m => m.trackKey));
+  const ambiguousIds = new Set(matches.filter(m => m.status === 'ambiguous').map(m => m.trackKey));
+  const unmatchedIds = new Set(matches.filter(m => m.status === 'unmatched').map(m => m.trackKey));
 
-  const getStatusForTrack = (trackId: string): 'matched' | 'ambiguous' | 'unmatched' | null => {
-    if (matchedIds.has(trackId)) return 'matched';
-    if (ambiguousIds.has(trackId)) return 'ambiguous';
-    if (unmatchedIds.has(trackId)) return 'unmatched';
+  const getStatusForTrack = (track: SpotifySavedTrack): 'matched' | 'ambiguous' | 'unmatched' | null => {
+    const tk = getTrackKey(track.track);
+    if (matchedIds.has(tk)) return 'matched';
+    if (ambiguousIds.has(tk)) return 'ambiguous';
+    if (unmatchedIds.has(tk)) return 'unmatched';
     return null;
   };
 
-  const getMatchInfoForTrack = (trackId: string): { strategy: string; songTitle?: string } | null => {
-    const match = matches.find(m => m.spotifyTrack.id === trackId);
+  const getMatchInfoForTrack = (track: SpotifySavedTrack): { strategy: string; songTitle?: string } | null => {
+    const tk = getTrackKey(track.track);
+    const match = matches.find(m => m.trackKey === tk);
     if (!match || match.status !== 'matched') return null;
     return {
       strategy: match.matchStrategy,
@@ -135,8 +138,8 @@ export function FavoritesTrackList({ tracks, matches, isLoading }: FavoritesTrac
           <TrackItem
             key={`${savedTrack.track.id}-${index}`}
             track={savedTrack}
-            status={getStatusForTrack(savedTrack.track.id)}
-            matchInfo={getMatchInfoForTrack(savedTrack.track.id)}
+            status={getStatusForTrack(savedTrack)}
+            matchInfo={getMatchInfoForTrack(savedTrack)}
           />
         ))}
       </div>
