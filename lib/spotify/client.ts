@@ -116,40 +116,53 @@ export class SpotifyClient {
 
   /**
    * Fetches the earliest `added_at` date from a playlist's tracks.
-   * Uses the Spotify fields filter to minimize payload — only fetches added_at.
-   * Returns the earliest date as an ISO string, or undefined if no tracks.
+   * Spotify returns tracks newest-first, so the earliest date is on the last
+   * page.  We fetch only the final page (and, for very small playlists, the
+   * first page when total ≤ 100) — a fixed 1-2 requests instead of paginating
+   * through every page.
    */
   async getPlaylistCreatedDate(playlistId: string, signal?: AbortSignal): Promise<string | undefined> {
     await spotifyRateLimiter.acquire();
-    const fields = 'items(added_at),total,next';
-    let earliest: string | undefined;
-    let offset = 0;
+    const fields = 'items(added_at),total';
     const limit = 100;
 
-    // Paginate to find the earliest added_at
-    // Tracks are returned newest-first, so stop when a page doesn't improve the result
-    while (true) {
-      const params = new URLSearchParams({
-        fields,
-        limit: limit.toString(),
-        offset: offset.toString(),
-      });
-      const response = await this.fetch(`/playlists/${playlistId}/items?${params.toString()}`, signal);
-      const data = await response.json();
+    // Fetch first page to get the total and the first page's dates
+    const firstResponse = await this.fetch(
+      `/playlists/${playlistId}/items?fields=${fields}&limit=${limit}&offset=0`,
+      signal,
+    );
+    const firstData = await firstResponse.json();
+    const total: number = firstData.total || 0;
 
-      let improved = false;
-      for (const item of data.items || []) {
-        if (item.added_at) {
-          if (!earliest || item.added_at < earliest) {
-            earliest = item.added_at;
-            improved = true;
-          }
+    let earliest: string | undefined;
+    for (const item of firstData.items || []) {
+      if (item.added_at) {
+        if (!earliest || item.added_at < earliest) {
+          earliest = item.added_at;
         }
       }
+    }
 
-      if (!data.next) break;
-      if (!improved) break; // All dates on this page are newer — no point continuing
-      offset += limit;
+    // If everything fits in one page, we're done
+    if (total <= limit) return earliest;
+
+    // Jump to the last page (newest-first → oldest tracks are at the end).
+    // Skip if the offset lands on the page we already fetched.
+    const lastOffset = total - limit;
+    if (lastOffset <= 0) return earliest;
+    await spotifyRateLimiter.acquire();
+    const lastResponse = await this.fetch(
+      `/playlists/${playlistId}/items?fields=${fields}&limit=${limit}&offset=${lastOffset}`,
+      signal,
+    );
+    const lastData = await lastResponse.json();
+
+    for (const item of lastData.items || []) {
+      if (item.added_at) {
+        if (!earliest || item.added_at < earliest) {
+          earliest = item.added_at;
+        }
+      }
     }
 
     return earliest;

@@ -603,12 +603,6 @@ export function Dashboard() {
             })
             setDatesLoadedCount(prev => prev + newDatesInBatch)
           }
-
-          // Brief yield between batches so a user click can claim the rate
-          // limiter for a foreground track fetch before the next batch starts.
-          if (!cancelled) {
-            await new Promise((r) => setTimeout(r, 200))
-          }
         }
 
       } catch (err) {
