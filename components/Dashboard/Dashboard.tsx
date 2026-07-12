@@ -521,14 +521,14 @@ export function Dashboard() {
 
   // Background fetch of playlist created dates (earliest added_at)
   // Fetches progressively — updates state after each playlist for immediate UI feedback
-  // Caches dates in localStorage to avoid re-fetching on every page load
+  // Caches dates in localStorage to avoid re-fetching on every page load.
+  // Yields to foreground track fetches to avoid starving the rate limiter.
   useEffect(() => {
     if (!spotify.isAuthenticated || !spotify.token || playlists.length === 0) return
 
     const CACHE_KEY = 'navispot-playlist-created-dates'
     let cancelled = false
 
-    // Load cached dates from localStorage
     function loadCachedDates(): Map<string, string> {
       try {
         const cached = localStorage.getItem(CACHE_KEY)
@@ -537,31 +537,26 @@ export function Dashboard() {
           return new Map(Object.entries(parsed))
         }
       } catch {
-        // Ignore parse errors
       }
       return new Map()
     }
 
-    // Save dates to localStorage
     function saveCachedDates(dates: Map<string, string>) {
       try {
         const obj: Record<string, string> = {}
         dates.forEach((v, k) => { obj[k] = v })
         localStorage.setItem(CACHE_KEY, JSON.stringify(obj))
       } catch {
-        // Ignore storage errors
       }
     }
 
     async function fetchDates() {
-      // First, load any cached dates
       const cachedDates = loadCachedDates()
       if (cachedDates.size > 0) {
         setPlaylistCreatedDates(cachedDates)
         setDatesLoadedCount(cachedDates.size)
       }
 
-      // Find playlists that still need dates
       const currentDates = cachedDates.size > 0 ? cachedDates : playlistCreatedDates
       const missingIds = playlists
         .filter((p) => !currentDates.has(p.id))
@@ -573,8 +568,13 @@ export function Dashboard() {
       try {
         spotifyClient.setToken(spotify.token!)
 
-        const CONCURRENCY = 3
+        const CONCURRENCY = 1
         for (let i = 0; i < missingIds.length; i += CONCURRENCY) {
+          if (cancelled) break
+
+          while (!cancelled && tracksFetchInFlightRef.current.size > 0) {
+            await new Promise((r) => setTimeout(r, 500))
+          }
           if (cancelled) break
 
           const batch = missingIds.slice(i, i + CONCURRENCY)

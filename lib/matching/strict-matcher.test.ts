@@ -6,7 +6,9 @@ const song1: NavidromeNativeSong = {
   id: 's1',
   title: 'Test Song',
   artist: 'Test Artist',
+  artistId: 'a1',
   album: 'Album',
+  albumId: 'al1',
   duration: 200,
 };
 
@@ -14,7 +16,9 @@ const song2: NavidromeNativeSong = {
   id: 's2',
   title: 'Test Song',
   artist: 'Other Artist',
+  artistId: 'a2',
   album: 'Album',
+  albumId: 'al1',
   duration: 200,
 };
 
@@ -22,7 +26,9 @@ const song3: NavidromeNativeSong = {
   id: 's3',
   title: 'Test Song',
   artist: 'Yet Another',
+  artistId: 'a3',
   album: 'Album',
+  albumId: 'al1',
   duration: 202,
 };
 
