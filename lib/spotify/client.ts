@@ -250,7 +250,7 @@ export class SpotifyClient {
       }
     }
 
-    const response = await fetch(`${SPOTIFY_API_BASE}${endpoint}`, {
+    const fetchOptions: RequestInit = {
       ...options,
       signal,
       headers: {
@@ -258,7 +258,13 @@ export class SpotifyClient {
         'Content-Type': 'application/json',
         ...options.headers,
       },
-    });
+    };
+
+    if (bypassCache) {
+      fetchOptions.cache = 'no-store';
+    }
+
+    const response = await fetch(`${SPOTIFY_API_BASE}${endpoint}`, fetchOptions);
 
     if (response.status === 401) {
       const refreshed = await this.refreshAccessToken();
