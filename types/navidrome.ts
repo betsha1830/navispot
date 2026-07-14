@@ -21,6 +21,7 @@ export interface NavidromeApiConfig {
 
 export interface NavidromeNativeSong {
   id: string;
+  mediaFileId?: string;
   title: string;
   artist: string;
   artistId: string;

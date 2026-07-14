@@ -1105,6 +1105,8 @@ export function Dashboard() {
         let isLikedSongs = false
         let cachedData: PlaylistExportData | PlaylistExportDataV2 | undefined = undefined
         let useDifferentialMatching = false
+        let upToDate = false
+        let existingNavidromeId: string | undefined = undefined
 
         if ("isLikedSongs" in item && item.isLikedSongs) {
           const savedTracks = await spotifyClient.getAllSavedTracks(signal)
@@ -1127,10 +1129,30 @@ export function Dashboard() {
 
           // Check for cached export data
           cachedData = loadPlaylistExportData(item.id)
-          const upToDate = cachedData
+          existingNavidromeId = cachedData?.navidromePlaylistId
+
+          // If localStorage has no record, query Navidrome server for a linked playlist
+          if (!existingNavidromeId && !forceExportPlaylists) {
+            const serverPlaylist = await navidromeClient.getPlaylistByComment(item.id)
+            if (serverPlaylist) {
+              existingNavidromeId = serverPlaylist.id
+              cachedData = {
+                spotifyPlaylistId: item.id,
+                spotifySnapshotId: itemSnapshotId,
+                playlistName: item.name,
+                navidromePlaylistId: serverPlaylist.id,
+                exportedAt: new Date().toISOString(),
+                trackCount: 0,
+                tracks: {},
+                statistics: { total: 0, matched: 0, unmatched: 0, ambiguous: 0 },
+              }
+            }
+          }
+
+          upToDate = cachedData
             ? isPlaylistUpToDate(cachedData, itemSnapshotId)
             : false
-          const hasNavidromePlaylist = !!cachedData?.navidromePlaylistId
+          const hasNavidromePlaylist = !!existingNavidromeId
           useDifferentialMatching = !forceExportPlaylists && hasNavidromePlaylist
         }
 
@@ -1383,7 +1405,17 @@ export function Dashboard() {
           }
         }
 
-        if (isLikedSongs) {
+        // Skip unchanged playlists entirely (no tracks added/removed)
+        if (upToDate && existingNavidromeId && !forceExportPlaylists && !isLikedSongs) {
+          exportResultData = {
+            statistics: {
+              total: tracks.length,
+              starred: tracks.length,
+              skipped: 0,
+              failed: 0,
+            },
+          }
+        } else if (isLikedSongs) {
           const result = await favoritesExporter.exportFavorites(matches, {
             skipUnmatched: false,
             signal,
@@ -1627,6 +1659,19 @@ export function Dashboard() {
             setTrackExportCache((prev) =>
               new Map(prev).set(item.id, updatedCache),
             )
+
+            // Persist the link to the Navidrome playlist comment for cross-browser identity
+            try {
+              await navidromeClient.updatePlaylistComment(result.playlistId, {
+                spotifyPlaylistId: item.id,
+                navidromePlaylistId: result.playlistId,
+                spotifySnapshotId: itemSnapshotId,
+                exportedAt: updatedCache.exportedAt,
+                trackCount: tracks.length,
+              }, signal)
+            } catch (e) {
+              console.warn('Failed to update playlist comment:', e)
+            }
           }
         }
 

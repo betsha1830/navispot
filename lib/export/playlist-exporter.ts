@@ -221,7 +221,8 @@ export class DefaultPlaylistExporter implements PlaylistExporter {
           checkAbort();
 
           const existingTracks = await this.navidromeClient.getPlaylist(options.existingPlaylistId, signal);
-          const existingSongIds = existingTracks.tracks.map(t => t.id);
+          const existingSongIds = existingTracks.tracks.map(t => t.mediaFileId || t.id);
+          const existingIdSet = new Set(existingSongIds);
 
           if (arraysEqual(existingSongIds, songIds)) {
             exported = songIds.length;
@@ -229,15 +230,41 @@ export class DefaultPlaylistExporter implements PlaylistExporter {
             break;
           }
 
-          const replaceResult = await this.navidromeClient.replacePlaylistSongs(options.existingPlaylistId, songIds, signal);
-          if (!replaceResult.success) {
-            errors.push({
-              trackName: 'N/A',
-              artistName: 'N/A',
-              reason: `Failed to replace tracks: ${replaceResult.error || 'Unknown error'}`,
-            });
-            break;
+          // Only add songs that aren't already in the playlist
+          const newSongIds = songIds.filter(id => !existingIdSet.has(id));
+          const removedEntryIndices = existingTracks.tracks
+            .map((t, i) => ({ mediaFileId: t.mediaFileId || t.id, index: i }))
+            .filter(({ mediaFileId }) => !songIds.includes(mediaFileId))
+            .map(({ index }) => index);
+
+          if (newSongIds.length > 0) {
+            const addResult = await this.navidromeClient.updatePlaylist(
+              options.existingPlaylistId, newSongIds, undefined, signal
+            );
+            if (!addResult.success) {
+              errors.push({
+                trackName: 'N/A',
+                artistName: 'N/A',
+                reason: `Failed to add new tracks: ${addResult.error || 'Unknown error'}`,
+              });
+              break;
+            }
           }
+
+          if (removedEntryIndices.length > 0) {
+            const removeResult = await this.navidromeClient.updatePlaylist(
+              options.existingPlaylistId, [], removedEntryIndices, signal
+            );
+            if (!removeResult.success) {
+              errors.push({
+                trackName: 'N/A',
+                artistName: 'N/A',
+                reason: `Failed to remove stale tracks: ${removeResult.error || 'Unknown error'}`,
+              });
+              break;
+            }
+          }
+
           exported = songIds.length;
           playlistId = options.existingPlaylistId;
           break;
