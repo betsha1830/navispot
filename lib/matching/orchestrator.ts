@@ -84,6 +84,19 @@ export async function matchTrack(
   let nativeCandidates: NavidromeNativeSong[] = [];
 
   nativeCandidates = await client.searchByTitle(trackTitle, opts.maxSearchResults, signal);
+
+  if (nativeCandidates.length > 50 && spotifyTrack.artists?.length > 0) {
+    const narrowed = await client.searchByTitleAndArtist(
+      trackTitle,
+      spotifyTrack.artists[0].name,
+      opts.maxSearchResults,
+      signal,
+    );
+    if (narrowed.length > 0) {
+      nativeCandidates = narrowed;
+    }
+  }
+
   candidates = nativeCandidates.map(convertNativeSongToNavidromeSong);
 
   const spotifyDurationSec = spotifyTrack.duration_ms / 1000;
@@ -164,7 +177,7 @@ export async function matchTrack(
   }
 
   if (opts.enableStrict) {
-    const strictResult = await matchByStrict(client, spotifyTrack);
+    const strictResult = await matchByStrict(client, spotifyTrack, nativeCandidates, signal);
     strategyResults.push({
       strategy: 'strict',
       matched: strictResult.status === 'matched',

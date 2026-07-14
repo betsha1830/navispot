@@ -537,6 +537,22 @@ export class NavidromeApiClient {
     return songs;
   }
 
+  async searchByTitleAndArtist(title: string, artistName: string, limit?: number, signal?: AbortSignal): Promise<NavidromeNativeSong[]> {
+    const end = limit || 50;
+    const strippedTitle = stripTitleSuffix(title);
+
+    const artist = await this.getArtistByName(artistName);
+    if (!artist) return [];
+
+    let songs = await this.searchByQuery('', { title: strippedTitle, artistId: artist.id, _start: 0, _end: end }, signal);
+
+    if (songs.length === 0 && title !== strippedTitle) {
+      songs = await this.searchByQuery('', { title, artistId: artist.id, _start: 0, _end: end }, signal);
+    }
+
+    return songs;
+  }
+
   async getSongByTitle(title: string): Promise<NavidromeNativeSong | null> {
     try {
       const params: Record<string, string | number | undefined> = {
