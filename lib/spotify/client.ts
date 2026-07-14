@@ -201,37 +201,45 @@ export class SpotifyClient {
   async refreshAccessToken(): Promise<SpotifyToken | null> {
     if (!this.token?.refreshToken) return null;
 
-    try {
-      const response = await fetch('/api/auth/refresh', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ refreshToken: this.token.refreshToken }),
-      });
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const response = await fetch('/api/auth/refresh', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refreshToken: this.token.refreshToken }),
+        });
 
-      if (!response.ok) return null;
+        if (!response.ok) {
+          if (response.status === 400) return null;
+          throw new Error(`Refresh failed: ${response.status}`);
+        }
 
-      const data = await response.json();
-      const newToken: SpotifyToken = {
-        accessToken: data.access_token,
-        refreshToken: this.token.refreshToken,
-        expiresAt: Date.now() + data.expires_in * 1000,
-        tokenType: data.token_type,
-        scope: data.scope,
-      };
+        const data = await response.json();
+        const newToken: SpotifyToken = {
+          accessToken: data.access_token,
+          refreshToken: this.token.refreshToken,
+          expiresAt: Date.now() + data.expires_in * 1000,
+          tokenType: data.token_type,
+          scope: data.scope,
+        };
 
-      this.setToken(newToken);
-      
-      const stored = localStorage.getItem(SPOTIFY_STORAGE_KEY);
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        parsed.token = newToken;
-        localStorage.setItem(SPOTIFY_STORAGE_KEY, JSON.stringify(parsed));
+        this.setToken(newToken);
+        
+        const stored = localStorage.getItem(SPOTIFY_STORAGE_KEY);
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          parsed.token = newToken;
+          localStorage.setItem(SPOTIFY_STORAGE_KEY, JSON.stringify(parsed));
+        }
+        
+        return newToken;
+      } catch {
+        if (attempt < 2) {
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
       }
-      
-      return newToken;
-    } catch {
-      return null;
     }
+    return null;
   }
 
   private async fetch(endpoint: string, signal?: AbortSignal, options: RequestInit = {}, bypassCache: boolean = false): Promise<Response> {
