@@ -272,16 +272,30 @@ export class SpotifyClient {
       fetchOptions.cache = 'no-store';
     }
 
-    const response = await fetch(`${SPOTIFY_API_BASE}${endpoint}`, fetchOptions);
+    let lastError: Error | null = null;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const response = await fetch(`${SPOTIFY_API_BASE}${endpoint}`, fetchOptions);
 
-    if (response.status === 401) {
-      const refreshed = await this.refreshAccessToken();
-      if (refreshed) {
-        return this.fetch(endpoint, signal, options, bypassCache);
+      if (response.status === 401) {
+        const refreshed = await this.refreshAccessToken();
+        if (refreshed) {
+          return this.fetch(endpoint, signal, options, bypassCache);
+        }
       }
+
+      if (response.status >= 500 && response.status < 600) {
+        lastError = new Error(`Spotify API error: ${response.status}`);
+        if (attempt < 2) {
+          const delay = Math.pow(2, attempt) * 1000;
+          await new Promise(resolve => setTimeout(resolve, delay));
+          continue;
+        }
+      }
+
+      return response;
     }
 
-    return response;
+    throw lastError || new Error('Spotify API request failed');
   }
 
   clearToken(): void {
