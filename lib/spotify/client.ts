@@ -281,6 +281,7 @@ export class SpotifyClient {
         if (refreshed) {
           return this.fetch(endpoint, signal, options, bypassCache);
         }
+        throw new Error('Token expired and refresh failed');
       }
 
       if (response.status >= 500 && response.status < 600) {
@@ -290,6 +291,7 @@ export class SpotifyClient {
           await new Promise(resolve => setTimeout(resolve, delay));
           continue;
         }
+        throw lastError;
       }
 
       return response;
