@@ -222,26 +222,21 @@ export class DefaultPlaylistExporter implements PlaylistExporter {
 
           const existingTracks = await this.navidromeClient.getPlaylist(options.existingPlaylistId, signal);
           const existingSongIds = existingTracks.tracks.map(t => t.mediaFileId || t.id);
-          const existingIdSet = new Set(existingSongIds);
+
+          // Set playlistId up-front so partial failures don't leave the caller
+          // without the id to reference when surfacing errors.
+          playlistId = options.existingPlaylistId;
 
           if (arraysEqual(existingSongIds, songIds)) {
             exported = songIds.length;
-            playlistId = options.existingPlaylistId;
             break;
           }
 
-          // Only add songs that aren't already in the playlist
-          playlistId = options.existingPlaylistId;
-          const newSongIds = songIds.filter(id => !existingIdSet.has(id));
-          const songIdSet = new Set(songIds);
-          const removedEntryIndices = existingTracks.tracks
-            .map((t, i) => ({ mediaFileId: t.mediaFileId || t.id, index: i }))
-            .filter(({ mediaFileId }) => !songIdSet.has(mediaFileId))
-            .map(({ index }) => index);
+          const appendTail = isOrderedPrefixAppend(existingSongIds, songIds);
 
-          if (newSongIds.length > 0) {
+          if (appendTail) {
             const addResult = await this.navidromeClient.updatePlaylist(
-              options.existingPlaylistId, newSongIds, undefined, signal
+              options.existingPlaylistId, appendTail, undefined, signal
             );
             if (!addResult.success) {
               errors.push({
@@ -251,22 +246,23 @@ export class DefaultPlaylistExporter implements PlaylistExporter {
               });
               break;
             }
+            exported = songIds.length;
+            break;
           }
 
-          if (removedEntryIndices.length > 0) {
-            const removeResult = await this.navidromeClient.updatePlaylist(
-              options.existingPlaylistId, [], removedEntryIndices, signal
-            );
-            if (!removeResult.success) {
-              errors.push({
-                trackName: 'N/A',
-                artistName: 'N/A',
-                reason: `Failed to remove stale tracks: ${removeResult.error || 'Unknown error'}`,
-              });
-              break;
-            }
+          // Reorder, gap, or count decrease — replace the full list so the final
+          // sequence exactly matches songIds.
+          const replaceResult = await this.navidromeClient.replacePlaylistSongs(
+            options.existingPlaylistId, songIds, signal
+          );
+          if (!replaceResult.success) {
+            errors.push({
+              trackName: 'N/A',
+              artistName: 'N/A',
+              reason: `Failed to replace playlist: ${replaceResult.error || 'Unknown error'}`,
+            });
+            break;
           }
-
           exported = songIds.length;
           break;
         }
@@ -346,4 +342,12 @@ function arraysEqual(a: string[], b: string[]): boolean {
     if (a[i] !== b[i]) return false;
   }
   return true;
+}
+
+function isOrderedPrefixAppend(existing: string[], desired: string[]): string[] | null {
+  if (desired.length <= existing.length) return null;
+  for (let i = 0; i < existing.length; i++) {
+    if (existing[i] !== desired[i]) return null;
+  }
+  return desired.slice(existing.length);
 }

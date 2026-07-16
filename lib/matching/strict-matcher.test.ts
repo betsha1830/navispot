@@ -1,6 +1,8 @@
-import { describe, it, expect } from 'vitest';
-import { filterStrictMatches } from '@/lib/matching/strict-matcher';
+import { describe, it, expect, vi } from 'vitest';
+import { filterStrictMatches, matchByStrict } from '@/lib/matching/strict-matcher';
 import { NavidromeNativeSong } from '@/types/navidrome';
+import type { SpotifyTrack } from '@/types/spotify';
+import type { NavidromeApiClient } from '@/lib/navidrome/client';
 
 const song1: NavidromeNativeSong = {
   id: 's1',
@@ -130,5 +132,41 @@ describe('version mismatch detection', () => {
     const result = filterStrictMatches([remixSong], 'test artist', 'test song remix', 'Test Song (Remix)');
     expect(result).toHaveLength(1);
     expect(result[0].id).toBe('s8');
+  });
+});
+
+describe('matchByStrict', () => {
+  const plainSong: NavidromeNativeSong = {
+    id: 'm1',
+    title: 'Hit Song',
+    artist: 'Test Artist',
+    artistId: 'a9',
+    album: 'Album',
+    albumId: 'al1',
+    duration: 180,
+  };
+
+  function makeMockClient(): NavidromeApiClient {
+    return {
+      searchByTitle: vi.fn().mockResolvedValue([plainSong]),
+      searchByTitleAndArtist: vi.fn().mockResolvedValue([plainSong]),
+      searchByQuery: vi.fn().mockResolvedValue([plainSong]),
+    } as unknown as NavidromeApiClient;
+  }
+
+  it('normalizes "Test Artist feat. Guest" before matching a plain Navidrome artist', async () => {
+    const client = makeMockClient();
+    const spotifyTrack: SpotifyTrack = {
+      id: 'st1',
+      name: 'Hit Song',
+      artists: [{ name: 'Test Artist feat. Guest' }],
+      album: { name: 'Album' },
+      duration_ms: 180000,
+    } as SpotifyTrack;
+
+    const result = await matchByStrict(client, spotifyTrack);
+    expect(result.status).toBe('matched');
+    expect(result.navidromeSong?.id).toBe('m1');
+    expect(client.searchByTitle).toHaveBeenCalled();
   });
 });

@@ -541,7 +541,7 @@ export class NavidromeApiClient {
     const end = limit || 50;
     const strippedTitle = stripTitleSuffix(title);
 
-    const artist = await this.getArtistByName(artistName);
+    const artist = await this.getArtistByName(artistName, signal);
     if (!artist) return [];
 
     let songs = await this.searchByQuery('', { title: strippedTitle, artistId: artist.id, _start: 0, _end: end }, signal);
@@ -573,7 +573,7 @@ export class NavidromeApiClient {
     }
   }
 
-  async getArtistByName(artistName: string): Promise<NavidromeNativeArtist | null> {
+  async getArtistByName(artistName: string, signal?: AbortSignal): Promise<NavidromeNativeArtist | null> {
     try {
       const params: Record<string, string | number | undefined> = {
         name: artistName,
@@ -583,14 +583,17 @@ export class NavidromeApiClient {
 
       const response = await this._makeNativeRequest<{
         items: NavidromeNativeArtist[];
-      }>('/api/artist', params);
+      }>('/api/artist', params, signal);
 
       if (response.items && response.items.length > 0) {
         return response.items[0];
       }
 
       return null;
-    } catch {
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        throw err;
+      }
       return null;
     }
   }
@@ -834,19 +837,27 @@ export class NavidromeApiClient {
   }
 
   async getPlaylistByComment(spotifyPlaylistId: string): Promise<NavidromePlaylist | null> {
+    const result = await this.findPlaylistBySpotifyId(spotifyPlaylistId);
+    return result.playlist;
+  }
+
+  async findPlaylistBySpotifyId(spotifyPlaylistId: string): Promise<{ playlist: NavidromePlaylist | null; error?: Error }> {
     try {
       const playlists = await this.getPlaylists();
 
       for (const playlist of playlists) {
         const metadata = parseExportMetadata(playlist.comment);
         if (metadata && metadata.spotifyPlaylistId === spotifyPlaylistId) {
-          return playlist;
+          return { playlist };
         }
       }
 
-      return null;
-    } catch {
-      return null;
+      return { playlist: null };
+    } catch (err) {
+      return {
+        playlist: null,
+        error: err instanceof Error ? err : new Error(String(err)),
+      };
     }
   }
 

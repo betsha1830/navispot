@@ -210,7 +210,7 @@ export class SpotifyClient {
         });
 
         if (!response.ok) {
-          if (response.status === 400) return null;
+          if (response.status >= 400 && response.status < 500) return null;
           throw new Error(`Refresh failed: ${response.status}`);
         }
 
@@ -224,14 +224,14 @@ export class SpotifyClient {
         };
 
         this.setToken(newToken);
-        
+
         const stored = localStorage.getItem(SPOTIFY_STORAGE_KEY);
         if (stored) {
           const parsed = JSON.parse(stored);
           parsed.token = newToken;
           localStorage.setItem(SPOTIFY_STORAGE_KEY, JSON.stringify(parsed));
         }
-        
+
         return newToken;
       } catch {
         if (attempt < 2) {
@@ -277,11 +277,14 @@ export class SpotifyClient {
       const response = await fetch(`${SPOTIFY_API_BASE}${endpoint}`, fetchOptions);
 
       if (response.status === 401) {
-        const refreshed = await this.refreshAccessToken();
-        if (refreshed) {
-          return this.fetch(endpoint, signal, options, bypassCache);
+        if (attempt >= 2) {
+          throw new Error('Spotify token refresh failed (401 after retry)');
         }
-        throw new Error('Token expired and refresh failed');
+        const refreshed = await this.refreshAccessToken();
+        if (!refreshed) {
+          throw new Error('Token expired and refresh failed');
+        }
+        continue;
       }
 
       if (response.status >= 500 && response.status < 600) {
