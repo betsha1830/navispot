@@ -231,10 +231,12 @@ export class DefaultPlaylistExporter implements PlaylistExporter {
           }
 
           // Only add songs that aren't already in the playlist
+          playlistId = options.existingPlaylistId;
           const newSongIds = songIds.filter(id => !existingIdSet.has(id));
+          const songIdSet = new Set(songIds);
           const removedEntryIndices = existingTracks.tracks
             .map((t, i) => ({ mediaFileId: t.mediaFileId || t.id, index: i }))
-            .filter(({ mediaFileId }) => !songIds.includes(mediaFileId))
+            .filter(({ mediaFileId }) => !songIdSet.has(mediaFileId))
             .map(({ index }) => index);
 
           if (newSongIds.length > 0) {
@@ -266,7 +268,6 @@ export class DefaultPlaylistExporter implements PlaylistExporter {
           }
 
           exported = songIds.length;
-          playlistId = options.existingPlaylistId;
           break;
         }
       }
