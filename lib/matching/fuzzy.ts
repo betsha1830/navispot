@@ -238,10 +238,11 @@ export function hasVersionMismatch(spotifyTitle: string, navidromeTitle: string)
   if (spotifyMarkers.size === 0 && navidromeMarkers.size === 0) return false;
   if (spotifyMarkers.size === 0 || navidromeMarkers.size === 0) return true;
 
+  if (spotifyMarkers.size !== navidromeMarkers.size) return true;
   for (const m of spotifyMarkers) {
-    if (navidromeMarkers.has(m)) return false;
+    if (!navidromeMarkers.has(m)) return true;
   }
-  return true;
+  return false;
 }
 
 export function calculateTrackSimilarity(

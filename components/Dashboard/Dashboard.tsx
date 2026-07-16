@@ -1030,7 +1030,11 @@ export function Dashboard() {
 
           // If localStorage has no record, query Navidrome server for a linked playlist
           if (!existingNavidromeId && !forceExportPlaylists) {
-            const serverPlaylist = await navidromeClient.getPlaylistByComment(item.id)
+            const lookup = await navidromeClient.findPlaylistBySpotifyId(item.id)
+            if (lookup.error) {
+              throw lookup.error
+            }
+            const serverPlaylist = lookup.playlist
             if (serverPlaylist) {
               existingNavidromeId = serverPlaylist.id
               const serverMetadata = parseExportMetadata(serverPlaylist.comment)
@@ -1308,8 +1312,8 @@ export function Dashboard() {
           exportResultData = {
             statistics: {
               total: tracks.length,
-              starred: tracks.length,
-              skipped: 0,
+              starred: statistics.matched,
+              skipped: tracks.length - statistics.matched,
               failed: 0,
             },
           }

@@ -379,4 +379,9 @@ describe('hasVersionMismatch', () => {
   it('does not false-positive on titles without version markers in parentheses', () => {
     expect(hasVersionMismatch('Live Your Life', 'Live Your Life')).toBe(false);
   });
+
+  it('detects mismatch when markers partially overlap (Extended Mix vs Radio Edit Mix)', () => {
+    expect(hasVersionMismatch('Song (Extended Mix)', 'Song (Radio Edit Mix)')).toBe(true);
+    expect(hasVersionMismatch('Song (Extended Mix)', 'Song (Extended Mix) (Radio Edit Mix)')).toBe(true);
+  });
 });
