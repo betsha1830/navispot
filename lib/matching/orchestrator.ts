@@ -177,7 +177,7 @@ export async function matchTrack(
   }
 
   if (opts.enableStrict) {
-    const strictResult = await matchByStrict(client, spotifyTrack, nativeCandidates, signal);
+    const strictResult = await matchByStrict(client, spotifyTrack, undefined, signal);
     strategyResults.push({
       strategy: 'strict',
       matched: strictResult.status === 'matched',
