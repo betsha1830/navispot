@@ -42,3 +42,6 @@ next-env.d.ts
 
 # config
 opencode.json
+
+# taste
+.commandcode/taste/
