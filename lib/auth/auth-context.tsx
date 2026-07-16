@@ -3,8 +3,10 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { AuthContextType, SpotifyAuthState, NavidromeAuthState, SPOTIFY_STORAGE_KEY, NAVIDROME_STORAGE_KEY, SKIP_SPOTIFY_STORAGE_KEY } from '@/types/auth-context';
 import { SpotifyToken, SpotifyUser } from '@/types/spotify-auth';
-import { NavidromeCredentials } from '@/types/navidrome';
+import { SpotifyPlaylist } from '@/types/spotify';
+import { NavidromePlaylist, NavidromeCredentials } from '@/types/navidrome';
 import { NavidromeApiClient } from '@/lib/navidrome/client';
+import { spotifyClient } from '@/lib/spotify/client';
 import { getJSON, setJSON } from '@/lib/storage';
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -28,6 +30,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     getJSON<boolean>(SKIP_SPOTIFY_STORAGE_KEY, false),
   );
 
+  const [playlists, setPlaylists] = useState<SpotifyPlaylist[]>([]);
+  const [navidromePlaylists, setNavidromePlaylists] = useState<NavidromePlaylist[]>([]);
+  const [likedSongsCount, setLikedSongsCount] = useState<number>(0);
+  const [fetchError, setFetchError] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+
   const testNavidromeConnection = useCallback(async (credentials: NavidromeCredentials): Promise<boolean> => {
     if (!credentials) {
       setNavidrome((prev) => ({
@@ -45,7 +53,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const storedAuth = localStorage.getItem(NAVIDROME_STORAGE_KEY);
       let storedToken = '';
       let storedClientId = '';
-      
+
       if (storedAuth) {
         const parsed = JSON.parse(storedAuth);
         storedToken = parsed.token ?? '';
@@ -59,11 +67,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         storedToken || undefined,
         storedClientId || undefined
       );
-      
+
       await client.ping();
       const token = client.getToken();
       const clientId = client.getClientId();
-      
+
       if (token && clientId) {
         localStorage.setItem(NAVIDROME_STORAGE_KEY, JSON.stringify({
           url: credentials.url,
@@ -72,7 +80,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           token,
           clientId,
         }));
-        
+
         setNavidrome((prev) => ({
           ...prev,
           isConnected: true,
@@ -139,26 +147,109 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  const fetchInitialData = useCallback(async (spotifyState: SpotifyAuthState, navidromeState: NavidromeAuthState) => {
+    const hasSpotify = spotifyState.isAuthenticated && !!spotifyState.token;
+
+    if (!hasSpotify) {
+      setPlaylists([]);
+      setLikedSongsCount(0);
+      setFetchError(null);
+      return;
+    }
+
+    setFetchError(null);
+
+    try {
+      spotifyClient.setToken(spotifyState.token!);
+      const fetchedPlaylists = await spotifyClient.getAllPlaylists();
+      setPlaylists(fetchedPlaylists);
+
+      try {
+        const count = await spotifyClient.getSavedTracksCount();
+        setLikedSongsCount(count);
+      } catch {
+        setLikedSongsCount(0);
+      }
+
+      if (
+        navidromeState.isConnected &&
+        navidromeState.credentials &&
+        navidromeState.token &&
+        navidromeState.clientId
+      ) {
+        const navidromeClient = new NavidromeApiClient(
+          navidromeState.credentials.url,
+          navidromeState.credentials.username,
+          navidromeState.credentials.password,
+          navidromeState.token,
+          navidromeState.clientId,
+        );
+        try {
+          const navPlaylists = await navidromeClient.getPlaylists();
+          setNavidromePlaylists(navPlaylists);
+        } catch (navErr) {
+          console.warn('Failed to fetch Navidrome playlists:', navErr);
+        }
+      }
+    } catch (err) {
+      setFetchError(err instanceof Error ? err.message : 'Failed to fetch playlists');
+    }
+  }, []);
+
+  const refreshData = useCallback(async () => {
+    if (!spotify.isAuthenticated || !spotify.token) return;
+    setRefreshing(true);
+    try {
+      await fetchInitialData(spotify, navidrome);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [spotify, navidrome, fetchInitialData]);
+
   const loadStoredAuth = useCallback(async () => {
+    let resolvedSpotify: SpotifyAuthState = {
+      isAuthenticated: false,
+      user: null,
+      token: null,
+    };
+    let resolvedNavidrome: NavidromeAuthState = {
+      isConnected: false,
+      credentials: null,
+      serverVersion: null,
+      error: null,
+      token: null,
+      clientId: null,
+    };
+
     try {
       const storedSpotify = localStorage.getItem(SPOTIFY_STORAGE_KEY);
       if (storedSpotify) {
         const parsed = JSON.parse(storedSpotify) as { token: SpotifyToken; user: SpotifyUser };
         if (parsed.token) {
           const isExpired = parsed.token.expiresAt <= Date.now();
-          
+
           if (isExpired) {
             const refreshed = await refreshSpotifyTokenFromStorage(parsed.token, parsed.user);
             if (refreshed) {
-              return;
+              resolvedSpotify = {
+                isAuthenticated: true,
+                token: JSON.parse(localStorage.getItem(SPOTIFY_STORAGE_KEY)!).token,
+                user: parsed.user,
+              };
+            } else {
+              localStorage.removeItem(SPOTIFY_STORAGE_KEY);
             }
-            localStorage.removeItem(SPOTIFY_STORAGE_KEY);
           } else {
             setSpotify({
               isAuthenticated: true,
               token: parsed.token,
               user: parsed.user,
             });
+            resolvedSpotify = {
+              isAuthenticated: true,
+              token: parsed.token,
+              user: parsed.user,
+            };
           }
         } else {
           localStorage.removeItem(SPOTIFY_STORAGE_KEY);
@@ -168,24 +259,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const storedNavidrome = localStorage.getItem(NAVIDROME_STORAGE_KEY);
       if (storedNavidrome) {
         const parsed = JSON.parse(storedNavidrome);
+        const navCreds = { url: parsed.url, username: parsed.username, password: parsed.password };
         setNavidrome((prev) => ({
           ...prev,
-          credentials: { url: parsed.url, username: parsed.username, password: parsed.password },
+          credentials: navCreds,
           token: parsed.token ?? null,
           clientId: parsed.clientId ?? '',
         }));
-        await testNavidromeConnection({ url: parsed.url, username: parsed.username, password: parsed.password });
+        resolvedNavidrome = {
+          isConnected: false,
+          credentials: navCreds,
+          serverVersion: null,
+          error: null,
+          token: parsed.token ?? null,
+          clientId: parsed.clientId ?? '',
+        };
+        await testNavidromeConnection(navCreds);
       }
 
       if (!storedSpotify) {
         const response = await fetch('/api/auth/session');
         const data = await response.json();
-        
+
         if (data.authenticated && data.token) {
           const response2 = await fetch('https://api.spotify.com/v1/me', {
             headers: { Authorization: `Bearer ${data.token.accessToken}` },
           });
-          
+
           if (response2.ok) {
             const user = await response2.json();
             const authData = { token: data.token, user };
@@ -195,15 +295,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               token: data.token,
               user,
             });
+            resolvedSpotify = {
+              isAuthenticated: true,
+              token: data.token,
+              user,
+            };
           }
         }
       }
     } catch (error) {
       console.error('Error loading stored auth:', error);
-    } finally {
-      setIsLoading(false);
     }
-  }, [testNavidromeConnection, refreshSpotifyTokenFromStorage]);
+
+    await fetchInitialData(resolvedSpotify, resolvedNavidrome);
+
+    setIsLoading(false);
+  }, [testNavidromeConnection, refreshSpotifyTokenFromStorage, fetchInitialData]);
 
   useEffect(() => {
     loadStoredAuth();
@@ -232,6 +339,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           user: null,
           token: null,
         });
+        setPlaylists([]);
+        setLikedSongsCount(0);
+        setNavidromePlaylists([]);
+        setFetchError(null);
       }
     } catch (error) {
       console.error('Error logging out from Spotify:', error);
@@ -241,6 +352,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         user: null,
         token: null,
       });
+      setPlaylists([]);
+      setLikedSongsCount(0);
+      setNavidromePlaylists([]);
+      setFetchError(null);
     }
   }, []);
 
@@ -248,7 +363,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const stored = localStorage.getItem(SPOTIFY_STORAGE_KEY);
       if (!stored) return false;
-      
+
       const parsed = JSON.parse(stored) as { token: SpotifyToken };
       if (!parsed.token?.refreshToken) return false;
 
@@ -285,9 +400,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         credentials.username,
         credentials.password
       );
-      
+
       const loginResult = await client.login(credentials.username, credentials.password);
-      
+
       if (!loginResult.success) {
         setNavidrome((prev) => ({
           ...prev,
@@ -301,7 +416,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       const token = client.getToken();
       const clientId = client.getClientId();
-      
+
       localStorage.setItem(NAVIDROME_STORAGE_KEY, JSON.stringify({
         url: credentials.url,
         username: credentials.username,
@@ -310,14 +425,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         clientId,
       }));
 
-      setNavidrome((prev) => ({
-        ...prev,
+      const nextNavidrome: NavidromeAuthState = {
         isConnected: true,
         serverVersion: 'Navidrome (native API)',
         error: null,
         token,
         clientId,
-      }));
+        credentials,
+      };
+      setNavidrome(nextNavidrome);
+
+      if (spotify.isAuthenticated && spotify.token) {
+        try {
+          const navidromeClient = new NavidromeApiClient(
+            credentials.url,
+            credentials.username,
+            credentials.password,
+            token,
+            clientId,
+          );
+          const navPlaylists = await navidromeClient.getPlaylists();
+          setNavidromePlaylists(navPlaylists);
+        } catch (navErr) {
+          console.warn('Failed to fetch Navidrome playlists:', navErr);
+        }
+      }
 
       return true;
     } catch (error) {
@@ -331,7 +463,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }));
       return false;
     }
-  }, []);
+  }, [spotify.isAuthenticated, spotify.token]);
 
   const clearNavidromeCredentials = useCallback(() => {
     localStorage.removeItem(NAVIDROME_STORAGE_KEY);
@@ -343,6 +475,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       token: null,
       clientId: null,
     });
+    setNavidromePlaylists([]);
   }, []);
 
   const setSkipSpotify = useCallback((skip: boolean) => {
@@ -366,6 +499,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     isLoading,
     skipSpotify,
     setSkipSpotify,
+    playlists,
+    navidromePlaylists,
+    likedSongsCount,
+    fetchError,
+    refreshing,
+    refreshData,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
