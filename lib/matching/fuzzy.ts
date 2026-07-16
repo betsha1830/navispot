@@ -292,7 +292,17 @@ export function calculateTrackSimilarity(
   let baseSimilarity = availableWeight > 0 ? weightedSum / availableWeight : titleSimilarity;
 
   if (titleSimilarity === 1.0 && (artistSimilarity < 0 || artistSimilarity >= 0.6)) {
-    baseSimilarity = (artistSimilarity >= 0 ? artistSimilarity * 0.2 : 0) + titleSimilarity * 0.4 + durationSimilarity * 0.3 + (albumSimilarity >= 0 ? albumSimilarity * 0.1 : 0);
+    let overrideWeight = 0.4 + 0.3; // title + duration are always available
+    let overrideSum = titleSimilarity * 0.4 + durationSimilarity * 0.3;
+    if (artistSimilarity >= 0) {
+      overrideWeight += 0.2;
+      overrideSum += artistSimilarity * 0.2;
+    }
+    if (albumSimilarity >= 0) {
+      overrideWeight += 0.1;
+      overrideSum += albumSimilarity * 0.1;
+    }
+    baseSimilarity = overrideSum / overrideWeight;
   }
 
   if (durationSimilarity >= 0.9 && (artistSimilarity < 0 || artistSimilarity >= 0.6)) {
