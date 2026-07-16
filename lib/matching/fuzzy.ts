@@ -25,7 +25,8 @@ export function normalizeString(str: string): string {
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/[^\w\s]/g, '')
     .replace(/\s+/g, ' ')
-    .trim();
+    .trim()
+    .replace(/^(the|a|an)\s+/, '');
 }
 
 export function levenshteinDistance(a: string, b: string): number {
@@ -88,6 +89,19 @@ export function calculateArtistSimilarity(
   return 1.0 - distance / maxLength;
 }
 
+export function calculateBestArtistSimilarity(
+  spotifyArtists: string[],
+  navidromeArtist: string
+): number {
+  let best = 0;
+  for (const artist of spotifyArtists) {
+    const score = calculateArtistSimilarity(artist, navidromeArtist);
+    if (score > best) best = score;
+    if (best === 1.0) break;
+  }
+  return best;
+}
+
 const DURATION_THRESHOLD_MS = 3000;
 
 export function calculateDurationSimilarity(
@@ -109,27 +123,6 @@ export function calculateDurationSimilarity(
 const SOUNDTRACK_WORDS = [
   'original', 'sound', 'track', 'ost', ' soundtrack', 'score',
   'complete', 'vol', 'volume', ' disc ', 'disk'
-];
-
-const LIVE_INDICATORS = [
-  ' (live)',
-  '- live',
-  ' [live]',
-  ' live',
-  '(live)',
-  '-live',
-  '[live]',
-];
-
-const COLLABORATION_INDICATORS = [
-  'feat', 'feat.', 'ft', 'ft.',
-  'with', ' x ', ' X ',
-  ' and ', ' & ',
-  ' vs ', ' versus ',
-  ' presents ', ' presenting ',
-  ' pres. ', ' pres ',
-  ' prod ', ' produced by ',
-  'DJ '
 ];
 
 const TITLE_SUFFIX_PATTERN = /[\(\[].*?[\)\]]\s*$|[-–—~/].*$/;
@@ -160,18 +153,21 @@ export function normalizeTitle(title: string): string {
   // Remove parenthetical/bracket groups containing featured artists
   // e.g. "(feat. Kehlani & Lil Yachty)", "[ft. Someone]"
   normalized = normalized.replace(FEATURED_ARTIST_PATTERN, ' ');
-  for (const indicator of LIVE_INDICATORS) {
-    normalized = normalized.replace(new RegExp(indicator.replace(/[[\]()]/g, '\\$&'), 'gi'), ' ');
-  }
   normalized = normalizeString(normalized);
   return normalized.replace(/\s+/g, ' ').trim();
 }
 
+const COLLABORATION_INDICATORS_AMBIGUOUS = /\s+[xX]\s+|\s+&\s+|\s+and\s+/g;
+
 export function normalizeArtistName(artist: string): string {
   let normalized = artist.toLowerCase();
-  for (const indicator of COLLABORATION_INDICATORS) {
-    normalized = normalized.replace(new RegExp(indicator.replace(/[[\]()]/g, '\\$&'), 'gi'), ' ');
-  }
+  // Strip clear collaboration indicators and everything after them
+  // e.g. "Kendrick Lamar feat. SZA" → "kendrick lamar"
+  normalized = normalized.replace(/\s+(?:feat\.?|ft\.?|featuring|with|vs\.?|versus|presents?\.?|presenting|prod\.?|produced by)\s.*$/gi, '');
+  // Remove ambiguous collaboration indicators (keep surrounding text)
+  normalized = normalized.replace(COLLABORATION_INDICATORS_AMBIGUOUS, ' ');
+  // Remove "DJ " prefix
+  normalized = normalized.replace(/^dj\s+/gi, '');
   normalized = normalizeString(normalized);
   return normalized.replace(/\s+/g, ' ').trim();
 }
@@ -195,7 +191,7 @@ export function calculateAlbumSimilarity(
   );
 
   const similarity = matchingParts.length / Math.max(spotifyParts.length, navidromeParts.length);
-  return similarity * 0.8;
+  return similarity;
 }
 
 export function calculateTitleSimilarity(
@@ -216,6 +212,38 @@ export function calculateTitleSimilarity(
   return 1.0 - distance / maxLength;
 }
 
+const VERSION_KEYWORDS = /\b(?:remix|rmxx|acoustic|instrumental|radio\s*edit|extended|dub|vip|rework|bootleg|karaoke|demo|unplugged|stripped|live|mix|edit|cover)\b/gi;
+
+export function extractVersionMarkers(title: string): Set<string> {
+  const markers = new Set<string>();
+  const groups = title.match(/[\(\[][^\)\]]*[\)\]]/g) || [];
+  for (const group of groups) {
+    const matches = group.match(VERSION_KEYWORDS);
+    if (matches) matches.forEach(m => markers.add(m.toLowerCase()));
+  }
+  const dashParts = title.split(/[-–—]/);
+  if (dashParts.length > 1) {
+    for (let i = 1; i < dashParts.length; i++) {
+      const matches = dashParts[i].match(VERSION_KEYWORDS);
+      if (matches) matches.forEach(m => markers.add(m.toLowerCase()));
+    }
+  }
+  return markers;
+}
+
+export function hasVersionMismatch(spotifyTitle: string, navidromeTitle: string): boolean {
+  const spotifyMarkers = extractVersionMarkers(spotifyTitle);
+  const navidromeMarkers = extractVersionMarkers(navidromeTitle);
+
+  if (spotifyMarkers.size === 0 && navidromeMarkers.size === 0) return false;
+  if (spotifyMarkers.size === 0 || navidromeMarkers.size === 0) return true;
+
+  for (const m of spotifyMarkers) {
+    if (navidromeMarkers.has(m)) return false;
+  }
+  return true;
+}
+
 export function calculateTrackSimilarity(
   spotifyTrack: import('@/types/spotify').SpotifyTrack,
   navidromeSong: import('@/types/navidrome').NavidromeSong
@@ -224,8 +252,8 @@ export function calculateTrackSimilarity(
   const hasSpotifyAlbum = spotifyTrack.album && spotifyTrack.album.name && spotifyTrack.album.name.length > 0;
 
   const artistSimilarity = hasSpotifyArtist
-    ? calculateArtistSimilarity(
-        spotifyTrack.artists.map((a) => a.name).join(' '),
+    ? calculateBestArtistSimilarity(
+        spotifyTrack.artists.map((a) => a.name),
         navidromeSong.artist
       )
     : -1;
@@ -263,19 +291,36 @@ export function calculateTrackSimilarity(
 
   let baseSimilarity = availableWeight > 0 ? weightedSum / availableWeight : titleSimilarity;
 
-  if (titleSimilarity === 1.0 && (artistSimilarity < 0 || artistSimilarity >= 0.3)) {
-    return Math.max(
-      (artistSimilarity >= 0 ? artistSimilarity * 0.2 : 0) + titleSimilarity * 0.4 + durationSimilarity * 0.3 + (albumSimilarity >= 0 ? albumSimilarity * 0.1 : 0),
-      0.85
-    );
+  if (titleSimilarity === 1.0 && (artistSimilarity < 0 || artistSimilarity >= 0.6)) {
+    let overrideWeight = 0.4 + 0.3; // title + duration are always available
+    let overrideSum = titleSimilarity * 0.4 + durationSimilarity * 0.3;
+    if (artistSimilarity >= 0) {
+      overrideWeight += 0.2;
+      overrideSum += artistSimilarity * 0.2;
+    }
+    if (albumSimilarity >= 0) {
+      overrideWeight += 0.1;
+      overrideSum += albumSimilarity * 0.1;
+    }
+    baseSimilarity = overrideSum / overrideWeight;
   }
 
-  if (durationSimilarity >= 0.9 && (artistSimilarity < 0 || artistSimilarity >= 0.3)) {
+  if (durationSimilarity >= 0.9 && (artistSimilarity < 0 || artistSimilarity >= 0.6)) {
     baseSimilarity = Math.min(baseSimilarity + 0.1, 0.95);
   }
 
-  if (albumSimilarity >= 0.8 && titleSimilarity >= 0.6 && (artistSimilarity < 0 || artistSimilarity >= 0.4)) {
+  if (albumSimilarity >= 0.8 && titleSimilarity >= 0.6 && (artistSimilarity < 0 || artistSimilarity >= 0.6)) {
     baseSimilarity = Math.min(baseSimilarity + 0.05, 0.95);
+  }
+
+  // Artist gate: reject candidates with significantly different artists
+  if (artistSimilarity >= 0 && artistSimilarity < 0.6) {
+    baseSimilarity = Math.min(baseSimilarity, 0.5);
+  }
+
+  // Version mismatch penalty: reject different versions (remix vs original, live vs original, etc.)
+  if (hasVersionMismatch(spotifyTrack.name, navidromeSong.title)) {
+    baseSimilarity = Math.min(baseSimilarity, 0.5);
   }
 
   return baseSimilarity;

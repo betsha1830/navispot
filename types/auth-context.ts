@@ -1,5 +1,6 @@
 import { SpotifyToken, SpotifyUser } from './spotify-auth';
-import { NavidromeCredentials } from './navidrome';
+import { NavidromeCredentials, NavidromePlaylist } from './navidrome';
+import { SpotifyPlaylist } from './spotify';
 
 export interface SpotifyAuthState {
   isAuthenticated: boolean;
@@ -28,6 +29,12 @@ export interface AuthContextType {
   isLoading: boolean;
   skipSpotify: boolean;
   setSkipSpotify: (skip: boolean) => void;
+  playlists: SpotifyPlaylist[];
+  navidromePlaylists: NavidromePlaylist[];
+  likedSongsCount: number;
+  fetchError: string | null;
+  refreshing: boolean;
+  refreshData: () => Promise<void>;
 }
 
 export const SPOTIFY_STORAGE_KEY = 'navispot_spotify_auth';

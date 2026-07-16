@@ -105,22 +105,26 @@ function formatDuration(ms: number): string {
 }
 
 export function Dashboard() {
-  const { spotify, navidrome, spotifyLogout, setSkipSpotify } = useAuth()
+  const {
+    spotify,
+    navidrome,
+    spotifyLogout,
+    setSkipSpotify,
+    playlists,
+    navidromePlaylists,
+    likedSongsCount,
+    fetchError,
+    refreshing,
+    refreshData,
+  } = useAuth()
   const toast = useToast()
-  const [playlists, setPlaylists] = useState<SpotifyPlaylist[]>([])
   const [tableItems, setTableItems] = useState<PlaylistTableItem[]>([])
   const [importedPlaylists, setImportedPlaylists] = useState<ImportedPlaylist[]>(() =>
     getJSON<ImportedPlaylist[]>(IMPORTED_STORAGE_KEY, []),
   )
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
-  const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [progressState, setProgressState] = useState<ProgressState | null>(null)
-  const [likedSongsCount, setLikedSongsCount] = useState<number>(0)
-  const [refreshing, setRefreshing] = useState(false)
-  const [navidromePlaylists, setNavidromePlaylists] = useState<
-    NavidromePlaylist[]
-  >([])
 
   const [isExporting, setIsExporting] = useState(false)
   const [showConfirmation, setShowConfirmation] = useState(false)
@@ -173,67 +177,6 @@ export function Dashboard() {
   // Tracks playlist ids whose tracks are currently being fetched. Lives in a
   // ref (not state) so the fetch effect doesn't re-fire on every setState.
   const tracksFetchInFlightRef = useRef<Set<string>>(new Set())
-
-  useEffect(() => {
-    async function fetchData() {
-      if (!spotify.isAuthenticated || !spotify.token) {
-        setError(null)
-        return
-      }
-
-      setLoading(true)
-      setError(null)
-
-      try {
-        spotifyClient.setToken(spotify.token)
-        const fetchedPlaylists = await spotifyClient.getAllPlaylists()
-        setPlaylists(fetchedPlaylists)
-
-        try {
-          const count = await spotifyClient.getSavedTracksCount()
-          setLikedSongsCount(count)
-        } catch {
-          setLikedSongsCount(0)
-        }
-
-        if (
-          navidrome.isConnected &&
-          navidrome.credentials &&
-          navidrome.token &&
-          navidrome.clientId
-        ) {
-          const navidromeClient = new NavidromeApiClient(
-            navidrome.credentials.url,
-            navidrome.credentials.username,
-            navidrome.credentials.password,
-            navidrome.token,
-            navidrome.clientId,
-          )
-          try {
-            const navPlaylists = await navidromeClient.getPlaylists()
-            setNavidromePlaylists(navPlaylists)
-          } catch (navErr) {
-            console.warn("Failed to fetch Navidrome playlists:", navErr)
-          }
-        }
-      } catch (err) {
-        setError(
-          err instanceof Error ? err.message : "Failed to fetch playlists",
-        )
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    fetchData()
-  }, [
-    spotify.isAuthenticated,
-    spotify.token,
-    navidrome.isConnected,
-    navidrome.credentials,
-    navidrome.token,
-    navidrome.clientId,
-  ])
 
   useEffect(() => {
     setJSON(IMPORTED_STORAGE_KEY, importedPlaylists)
@@ -328,102 +271,56 @@ export function Dashboard() {
   }, [importedPlaylists, toast])
 
   const handleRefreshPlaylists = async () => {
-    setRefreshing(true)
     setError(null)
 
+    const oldTrackCounts = new Map(playlists.map(p => [p.id, p.items.total]))
+    const oldSnapshots = new Map(playlists.map(p => [p.id, p.snapshot_id]))
+
     try {
-      if (spotify.isAuthenticated && spotify.token) {
-        spotifyClient.setToken(spotify.token)
+      await refreshData()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to refresh playlists")
+    }
 
-        // Capture old track counts AND snapshot IDs for comparison
-        const oldTrackCounts = new Map(
-          playlists.map(p => [p.id, p.items.total])
-        )
-        const oldSnapshots = new Map(
-          playlists.map(p => [p.id, p.snapshot_id])
-        )
+    const changedPlaylistIds = playlists
+      .filter(p => oldSnapshots.has(p.id))
+      .filter(p => {
+        const trackCountChanged = oldTrackCounts.get(p.id) !== p.items.total
+        const snapshotChanged = oldSnapshots.get(p.id) !== p.snapshot_id
+        return trackCountChanged || snapshotChanged
+      })
+      .map(p => p.id)
 
-        const fetchedPlaylists = await spotifyClient.getAllPlaylists(undefined, true)
+    if (changedPlaylistIds.length > 0) {
+      setPlaylistTracksCache(prev => {
+        const newCache = new Map(prev)
+        changedPlaylistIds.forEach(id => newCache.delete(id))
+        return newCache
+      })
+    }
 
-        // Compare both track counts AND snapshot IDs - playlist changed if either is different
-        const changedPlaylistIds = fetchedPlaylists
-          .filter(p => oldSnapshots.has(p.id))
-          .filter(p => {
-            const trackCountChanged = oldTrackCounts.get(p.id) !== p.items.total
-            const snapshotChanged = oldSnapshots.get(p.id) !== p.snapshot_id
-            return trackCountChanged || snapshotChanged
-          })
-          .map(p => p.id)
-
-        if (changedPlaylistIds.length > 0) {
-          setPlaylistTracksCache(prev => {
-            const newCache = new Map(prev)
-            changedPlaylistIds.forEach(id => newCache.delete(id))
-            return newCache
-          })
-        }
-
-        setPlaylists(fetchedPlaylists)
-
+    if (importedPlaylists.length > 0) {
+      const updated: ImportedPlaylist[] = []
+      for (const existing of importedPlaylists) {
         try {
-          const count = await spotifyClient.getSavedTracksCount(undefined, true)
-          setLikedSongsCount(count)
-        } catch {
-          setLikedSongsCount(0)
-        }
-      }
-
-      // Re-fetch each imported playlist to pick up the latest tracks/metadata
-      if (importedPlaylists.length > 0) {
-        const updated: ImportedPlaylist[] = []
-        for (const existing of importedPlaylists) {
-          try {
-            const res = await fetch("/api/spotify/public-playlist", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                url: `https://open.spotify.com/playlist/${existing.id}`,
-              }),
-            })
-            if (res.ok) {
-              const data = await res.json()
-              updated.push(data.playlist as ImportedPlaylist)
-            } else {
-              updated.push(existing)
-            }
-          } catch {
+          const res = await fetch("/api/spotify/public-playlist", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              url: `https://open.spotify.com/playlist/${existing.id}`,
+            }),
+          })
+          if (res.ok) {
+            const data = await res.json()
+            updated.push(data.playlist as ImportedPlaylist)
+          } else {
             updated.push(existing)
           }
-        }
-        setImportedPlaylists(updated)
-      }
-
-      if (
-        navidrome.isConnected &&
-        navidrome.credentials &&
-        navidrome.token &&
-        navidrome.clientId
-      ) {
-        const navidromeClient = new NavidromeApiClient(
-          navidrome.credentials.url,
-          navidrome.credentials.username,
-          navidrome.credentials.password,
-          navidrome.token,
-          navidrome.clientId,
-        )
-        try {
-          const navPlaylists = await navidromeClient.getPlaylists()
-          setNavidromePlaylists(navPlaylists)
-        } catch (navErr) {
-          console.warn("Failed to fetch Navidrome playlists:", navErr)
+        } catch {
+          updated.push(existing)
         }
       }
-    } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Failed to refresh playlists",
-      )
-    } finally {
-      setRefreshing(false)
+      setImportedPlaylists(updated)
     }
   }
 
@@ -1105,6 +1002,8 @@ export function Dashboard() {
         let isLikedSongs = false
         let cachedData: PlaylistExportData | PlaylistExportDataV2 | undefined = undefined
         let useDifferentialMatching = false
+        let upToDate = false
+        let existingNavidromeId: string | undefined = undefined
 
         if ("isLikedSongs" in item && item.isLikedSongs) {
           const savedTracks = await spotifyClient.getAllSavedTracks(signal)
@@ -1127,10 +1026,31 @@ export function Dashboard() {
 
           // Check for cached export data
           cachedData = loadPlaylistExportData(item.id)
-          const upToDate = cachedData
+          existingNavidromeId = cachedData?.navidromePlaylistId
+
+          // If localStorage has no record, query Navidrome server for a linked playlist
+          if (!existingNavidromeId && !forceExportPlaylists) {
+            const serverPlaylist = await navidromeClient.getPlaylistByComment(item.id)
+            if (serverPlaylist) {
+              existingNavidromeId = serverPlaylist.id
+              const serverMetadata = parseExportMetadata(serverPlaylist.comment)
+              cachedData = {
+                spotifyPlaylistId: item.id,
+                spotifySnapshotId: serverMetadata?.spotifySnapshotId ?? '',
+                playlistName: item.name,
+                navidromePlaylistId: serverPlaylist.id,
+                exportedAt: serverMetadata?.exportedAt ?? new Date().toISOString(),
+                trackCount: serverMetadata?.trackCount ?? 0,
+                tracks: {},
+                statistics: { total: 0, matched: 0, unmatched: 0, ambiguous: 0 },
+              }
+            }
+          }
+
+          upToDate = cachedData
             ? isPlaylistUpToDate(cachedData, itemSnapshotId)
             : false
-          const hasNavidromePlaylist = !!cachedData?.navidromePlaylistId
+          const hasNavidromePlaylist = !!existingNavidromeId
           useDifferentialMatching = !forceExportPlaylists && hasNavidromePlaylist
         }
 
@@ -1383,7 +1303,17 @@ export function Dashboard() {
           }
         }
 
-        if (isLikedSongs) {
+        // Skip unchanged playlists entirely (no tracks added/removed)
+        if (upToDate && existingNavidromeId && !forceExportPlaylists && !isLikedSongs) {
+          exportResultData = {
+            statistics: {
+              total: tracks.length,
+              starred: tracks.length,
+              skipped: 0,
+              failed: 0,
+            },
+          }
+        } else if (isLikedSongs) {
           const result = await favoritesExporter.exportFavorites(matches, {
             skipUnmatched: false,
             signal,
@@ -1627,6 +1557,19 @@ export function Dashboard() {
             setTrackExportCache((prev) =>
               new Map(prev).set(item.id, updatedCache),
             )
+
+            // Persist the link to the Navidrome playlist comment for cross-browser identity
+            try {
+              await navidromeClient.updatePlaylistComment(result.playlistId, {
+                spotifyPlaylistId: item.id,
+                navidromePlaylistId: result.playlistId,
+                spotifySnapshotId: itemSnapshotId,
+                exportedAt: updatedCache.exportedAt,
+                trackCount: tracks.length,
+              }, signal)
+            } catch (e) {
+              console.warn('Failed to update playlist comment:', e)
+            }
           }
         }
 
@@ -1933,7 +1876,7 @@ export function Dashboard() {
       isExporting={isExporting}
       onRefresh={handleRefreshPlaylists}
       isRefreshing={refreshing}
-      loading={loading}
+      loading={false}
       onClear={handleClearImported}
       canClear={importedPlaylists.length > 0}
       ownerFilter={ownerFilter}
@@ -1952,14 +1895,6 @@ export function Dashboard() {
       totalCount={tableItems.length}
     />
   )
-
-  if (loading) {
-    return (
-      <div className="flex min-h-[400px] items-center justify-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-gray-200 border-t-blue-500"></div>
-      </div>
-    )
-  }
 
   if (error) {
     return (

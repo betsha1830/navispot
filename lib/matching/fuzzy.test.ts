@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { calculateTrackSimilarity, findBestMatch, normalizeTitle, normalizeArtistName } from '@/lib/matching/fuzzy';
+import { calculateTrackSimilarity, findBestMatch, normalizeTitle, normalizeArtistName, calculateBestArtistSimilarity, calculateAlbumSimilarity, normalizeString, hasVersionMismatch, extractVersionMarkers } from '@/lib/matching/fuzzy';
 import { SpotifyTrack } from '@/types/spotify';
 import { NavidromeSong } from '@/types/navidrome';
 
@@ -149,5 +149,234 @@ describe('normalizeArtistName', () => {
   it('normalizes collaboration indicators', () => {
     const name = normalizeArtistName('Artist Ft. Guest');
     expect(name).not.toContain('ft.');
+  });
+});
+
+describe('calculateBestArtistSimilarity', () => {
+  it('returns 1.0 when any individual artist matches exactly', () => {
+    const score = calculateBestArtistSimilarity(['Kendrick Lamar', 'SZA'], 'Kendrick Lamar');
+    expect(score).toBe(1.0);
+  });
+
+  it('scores higher than joined-string comparison for multi-artist tracks', () => {
+    const bestScore = calculateBestArtistSimilarity(['Kendrick Lamar', 'SZA'], 'Kendrick Lamar');
+    const joinedScore = calculateBestArtistSimilarity(['Kendrick Lamar SZA'], 'Kendrick Lamar');
+    expect(bestScore).toBeGreaterThan(joinedScore);
+  });
+
+  it('returns 0 when no artists overlap', () => {
+    const score = calculateBestArtistSimilarity(['Drake', 'Future'], 'Kendrick Lamar');
+    expect(score).toBeLessThan(0.5);
+  });
+});
+
+describe('per-artist matching in calculateTrackSimilarity', () => {
+  it('matches multi-artist Spotify track against single-artist Navidrome song', () => {
+    const multiArtistTrack: SpotifyTrack = {
+      id: 'sp2',
+      name: 'All The Stars',
+      uri: 'spotify:track:sp2',
+      artists: [{ id: 'a1', name: 'Kendrick Lamar' }, { id: 'a2', name: 'SZA' }],
+      album: { id: 'al1', name: 'Black Panther' },
+      duration_ms: 200000,
+      external_ids: {},
+    };
+    const navidromeSong: NavidromeSong = {
+      id: 'nd1',
+      title: 'All The Stars',
+      artist: 'Kendrick Lamar',
+      album: 'Black Panther',
+      duration: 200,
+    };
+    const score = calculateTrackSimilarity(multiArtistTrack, navidromeSong);
+    expect(score).toBeGreaterThan(0.9);
+  });
+});
+
+describe('album similarity cap removed', () => {
+  it('returns raw token ratio without 0.8 multiplier', () => {
+    const score = calculateAlbumSimilarity('Same Album', 'Same Album');
+    expect(score).toBe(1.0);
+  });
+
+  it('returns proportional ratio for partial matches', () => {
+    const score = calculateAlbumSimilarity('Greatest Hits Vol 1', 'Greatest Hits');
+    expect(score).toBeGreaterThan(0.5);
+    expect(score).toBeLessThanOrEqual(1.0);
+  });
+});
+
+describe('article prefix stripping in normalizeString', () => {
+  it('strips leading "the"', () => {
+    expect(normalizeString('The Weeknd')).toBe('weeknd');
+  });
+
+  it('strips leading "a"', () => {
+    expect(normalizeString('A Tribe Called Quest')).toBe('tribe called quest');
+  });
+
+  it('strips leading "an"', () => {
+    expect(normalizeString('An Animal')).toBe('animal');
+  });
+
+  it('does not strip articles in the middle of a string', () => {
+    expect(normalizeString('Getting the Thing')).toBe('getting the thing');
+  });
+
+  it('does not strip articles at the end of a string', () => {
+    expect(normalizeString('Meet The')).toBe('meet the');
+  });
+});
+
+describe('artist gate', () => {
+  it('rejects wrong-artist match with same title', () => {
+    const spotifyTrack: SpotifyTrack = {
+      id: 'sp1',
+      name: 'Stay Another Night',
+      uri: 'spotify:track:sp1',
+      artists: [{ id: 'a1', name: 'Chris Ayer' }],
+      album: { id: 'al1', name: 'Some Album' },
+      duration_ms: 200000,
+      external_ids: {},
+    };
+    const wrongCandidate: NavidromeSong = {
+      id: 'nd1',
+      title: 'Stay Another Night',
+      artist: 'Cheat Codes',
+      album: 'Some Album',
+      duration: 200,
+    };
+    const score = calculateTrackSimilarity(spotifyTrack, wrongCandidate);
+    expect(score).toBeLessThan(0.8);
+  });
+
+  it('still matches correct artist with same title', () => {
+    const spotifyTrack: SpotifyTrack = {
+      id: 'sp1',
+      name: 'Stay Another Night',
+      uri: 'spotify:track:sp1',
+      artists: [{ id: 'a1', name: 'Chris Ayer' }],
+      album: { id: 'al1', name: 'Some Album' },
+      duration_ms: 200000,
+      external_ids: {},
+    };
+    const correctCandidate: NavidromeSong = {
+      id: 'nd1',
+      title: 'Stay Another Night',
+      artist: 'Chris Ayer',
+      album: 'Some Album',
+      duration: 200,
+    };
+    const score = calculateTrackSimilarity(spotifyTrack, correctCandidate);
+    expect(score).toBeGreaterThan(0.8);
+  });
+});
+
+describe('version mismatch penalty', () => {
+  it('rejects remix matching original', () => {
+    const spotifyTrack: SpotifyTrack = {
+      id: 'sp2',
+      name: 'Love Me Like That',
+      uri: 'spotify:track:sp2',
+      artists: [{ id: 'a1', name: 'State of Sound' }],
+      album: { id: 'al1', name: 'Some Album' },
+      duration_ms: 200000,
+      external_ids: {},
+    };
+    const remixCandidate: NavidromeSong = {
+      id: 'nd2',
+      title: 'Love Me Like That (Landis Remix)',
+      artist: 'State of Sound',
+      album: 'Some Album',
+      duration: 200,
+    };
+    const score = calculateTrackSimilarity(spotifyTrack, remixCandidate);
+    expect(score).toBeLessThan(0.8);
+  });
+
+  it('rejects acoustic matching original', () => {
+    const spotifyTrack: SpotifyTrack = {
+      id: 'sp3',
+      name: 'Some Song',
+      uri: 'spotify:track:sp3',
+      artists: [{ id: 'a1', name: 'Some Artist' }],
+      album: { id: 'al1', name: 'Some Album' },
+      duration_ms: 200000,
+      external_ids: {},
+    };
+    const acousticCandidate: NavidromeSong = {
+      id: 'nd3',
+      title: 'Some Song (Acoustic)',
+      artist: 'Some Artist',
+      album: 'Some Album',
+      duration: 200,
+    };
+    const score = calculateTrackSimilarity(spotifyTrack, acousticCandidate);
+    expect(score).toBeLessThan(0.8);
+  });
+
+  it('rejects live matching original', () => {
+    const spotifyTrack: SpotifyTrack = {
+      id: 'sp4',
+      name: 'Some Song',
+      uri: 'spotify:track:sp4',
+      artists: [{ id: 'a1', name: 'Some Artist' }],
+      album: { id: 'al1', name: 'Some Album' },
+      duration_ms: 200000,
+      external_ids: {},
+    };
+    const liveCandidate: NavidromeSong = {
+      id: 'nd4',
+      title: 'Some Song (Live)',
+      artist: 'Some Artist',
+      album: 'Some Album',
+      duration: 200,
+    };
+    const score = calculateTrackSimilarity(spotifyTrack, liveCandidate);
+    expect(score).toBeLessThan(0.8);
+  });
+
+  it('still matches when both have the same version marker', () => {
+    const spotifyTrack: SpotifyTrack = {
+      id: 'sp5',
+      name: 'Some Song (Remix)',
+      uri: 'spotify:track:sp5',
+      artists: [{ id: 'a1', name: 'Some Artist' }],
+      album: { id: 'al1', name: 'Some Album' },
+      duration_ms: 200000,
+      external_ids: {},
+    };
+    const remixCandidate: NavidromeSong = {
+      id: 'nd5',
+      title: 'Some Song (Remix)',
+      artist: 'Some Artist',
+      album: 'Some Album',
+      duration: 200,
+    };
+    const score = calculateTrackSimilarity(spotifyTrack, remixCandidate);
+    expect(score).toBeGreaterThan(0.8);
+  });
+});
+
+describe('hasVersionMismatch', () => {
+  it('detects mismatch when one has remix and other does not', () => {
+    expect(hasVersionMismatch('Song', 'Song (Remix)')).toBe(true);
+    expect(hasVersionMismatch('Song (Remix)', 'Song')).toBe(true);
+  });
+
+  it('detects no mismatch when both lack version markers', () => {
+    expect(hasVersionMismatch('Song', 'Song')).toBe(false);
+  });
+
+  it('detects no mismatch when both have same version marker', () => {
+    expect(hasVersionMismatch('Song (Remix)', 'Song (Remix)')).toBe(false);
+  });
+
+  it('detects mismatch when versions differ (remix vs live)', () => {
+    expect(hasVersionMismatch('Song (Remix)', 'Song (Live)')).toBe(true);
+  });
+
+  it('does not false-positive on titles without version markers in parentheses', () => {
+    expect(hasVersionMismatch('Live Your Life', 'Live Your Life')).toBe(false);
   });
 });

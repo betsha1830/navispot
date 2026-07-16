@@ -261,15 +261,22 @@ export class NavidromeApiClient {
         _order: 'ASC',
       };
 
-      const response = await this._makeNativeRequest<{
-        items: NavidromePlaylist[];
-      }>('/api/playlist', params, signal);
+      const response = await this._makeNativeRequest<NavidromePlaylist[] | { items: NavidromePlaylist[] }>('/api/playlist', params, signal);
 
-      if (response.items && response.items.length > 0) {
-        allPlaylists.push(...response.items.map(this._mapPlaylist));
+      let items: NavidromePlaylist[];
+      if (Array.isArray(response)) {
+        items = response;
+      } else if (response.items) {
+        items = response.items;
+      } else {
+        items = [];
       }
 
-      if (allPlaylists.length >= this._totalCount || !response.items || response.items.length === 0) {
+      if (items.length > 0) {
+        allPlaylists.push(...items.map(this._mapPlaylist));
+      }
+
+      if (allPlaylists.length >= this._totalCount || items.length === 0) {
         break;
       }
 
@@ -286,13 +293,20 @@ export class NavidromeApiClient {
     const playlistResponse = await this._makeNativeRequest<NavidromePlaylist>(`/api/playlist/${playlistId}`, {}, signal);
     const playlist = this._mapPlaylist(playlistResponse);
 
-    const tracksResponse = await this._makeNativeRequest<{
-      items: NavidromeNativeSong[];
-    }>(`/api/playlist/${playlistId}/tracks`, { _start: 0, _end: 1000 }, signal);
+    const tracksResponse = await this._makeNativeRequest<NavidromeNativeSong[] | { items: NavidromeNativeSong[] }>(`/api/playlist/${playlistId}/tracks`, { _start: 0, _end: 1000 }, signal);
+
+    let tracks: NavidromeNativeSong[];
+    if (Array.isArray(tracksResponse)) {
+      tracks = tracksResponse;
+    } else if (tracksResponse.items) {
+      tracks = tracksResponse.items;
+    } else {
+      tracks = [];
+    }
 
     return {
       playlist,
-      tracks: tracksResponse.items || [],
+      tracks,
     };
   }
 
@@ -518,6 +532,22 @@ export class NavidromeApiClient {
           return partSongs;
         }
       }
+    }
+
+    return songs;
+  }
+
+  async searchByTitleAndArtist(title: string, artistName: string, limit?: number, signal?: AbortSignal): Promise<NavidromeNativeSong[]> {
+    const end = limit || 50;
+    const strippedTitle = stripTitleSuffix(title);
+
+    const artist = await this.getArtistByName(artistName);
+    if (!artist) return [];
+
+    let songs = await this.searchByQuery('', { title: strippedTitle, artistId: artist.id, _start: 0, _end: end }, signal);
+
+    if (songs.length === 0 && title !== strippedTitle) {
+      songs = await this.searchByQuery('', { title, artistId: artist.id, _start: 0, _end: end }, signal);
     }
 
     return songs;
