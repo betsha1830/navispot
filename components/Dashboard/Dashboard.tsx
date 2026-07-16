@@ -1136,13 +1136,14 @@ export function Dashboard() {
             const serverPlaylist = await navidromeClient.getPlaylistByComment(item.id)
             if (serverPlaylist) {
               existingNavidromeId = serverPlaylist.id
+              const serverMetadata = parseExportMetadata(serverPlaylist.comment)
               cachedData = {
                 spotifyPlaylistId: item.id,
-                spotifySnapshotId: itemSnapshotId,
+                spotifySnapshotId: serverMetadata?.spotifySnapshotId ?? '',
                 playlistName: item.name,
                 navidromePlaylistId: serverPlaylist.id,
-                exportedAt: new Date().toISOString(),
-                trackCount: 0,
+                exportedAt: serverMetadata?.exportedAt ?? new Date().toISOString(),
+                trackCount: serverMetadata?.trackCount ?? 0,
                 tracks: {},
                 statistics: { total: 0, matched: 0, unmatched: 0, ambiguous: 0 },
               }
