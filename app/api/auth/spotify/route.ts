@@ -46,6 +46,7 @@ export async function DELETE() {
   
   response.cookies.delete('spotify_auth_state');
   response.cookies.delete('spotify_code_verifier');
+  response.cookies.delete('spotify_token');
   
   return response;
 }

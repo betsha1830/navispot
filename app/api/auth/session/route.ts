@@ -19,6 +19,8 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ authenticated: true, token: decoded });
   } catch {
-    return NextResponse.json({ authenticated: false, error: 'invalid_token' });
+    const response = NextResponse.json({ authenticated: false, error: 'invalid_token' });
+    response.cookies.delete('spotify_token');
+    return response;
   }
 }
