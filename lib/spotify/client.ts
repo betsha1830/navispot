@@ -36,7 +36,7 @@ export class SpotifyClient {
   async getPlaylistTracks(playlistId: string, limit: number = 100, offset: number = 0, signal?: AbortSignal): Promise<SpotifyTracksResponse> {
     await spotifyRateLimiter.acquire();
     const params = new URLSearchParams({ limit: limit.toString(), offset: offset.toString() });
-    const response = await this.fetch(`/playlists/${playlistId}/items?${params.toString()}`, signal);
+    const response = await this.fetch(`/playlists/${playlistId}/tracks?${params.toString()}`, signal);
     return response.json();
   }
 
@@ -128,7 +128,7 @@ export class SpotifyClient {
 
     // Fetch first page to get the total and the first page's dates
     const firstResponse = await this.fetch(
-      `/playlists/${playlistId}/items?fields=${fields}&limit=${limit}&offset=0`,
+      `/playlists/${playlistId}/tracks?fields=${fields}&limit=${limit}&offset=0`,
       signal,
     );
     const firstData = await firstResponse.json();
@@ -152,7 +152,7 @@ export class SpotifyClient {
     if (lastOffset <= 0) return earliest;
     await backgroundRateLimiter.acquire();
     const lastResponse = await this.fetch(
-      `/playlists/${playlistId}/items?fields=${fields}&limit=${limit}&offset=${lastOffset}`,
+      `/playlists/${playlistId}/tracks?fields=${fields}&limit=${limit}&offset=${lastOffset}`,
       signal,
     );
     const lastData = await lastResponse.json();
