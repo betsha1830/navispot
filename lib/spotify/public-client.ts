@@ -134,6 +134,7 @@ interface PlaylistMeta {
 
 interface SpotifyTrackItem {
   track: SpotifyTrack | null;
+  item: SpotifyTrack | null;
   is_local?: boolean;
   added_at?: string;
 }
@@ -157,12 +158,13 @@ export async function getPublicPlaylist(
   const tracks: SpotifyTrack[] = [];
   let nullTrackCount = 0;
   let nextPath: string | null =
-    `/playlists/${playlistId}/tracks?fields=items(track(id,name,artists(id,name),album(id,name,release_date),duration_ms,external_ids,external_urls,uri,is_local),is_local,added_at),next,snapshot_id&limit=100`;
+    `/playlists/${playlistId}/items?fields=items(item(id,name,artists(id,name),album(id,name,release_date),duration_ms,external_ids,external_urls,uri,is_local),is_local,added_at),next,snapshot_id&limit=50`;
   while (nextPath) {
     const page: PlaylistTracksPage = await spotifyGet<PlaylistTracksPage>(token, nextPath);
     for (const item of page.items) {
-      if (item.track) {
-        const track = item.track;
+      const itemData = (item as Record<string, unknown>).item as SpotifyTrack | null;
+      const track = itemData ?? item.track;
+      if (track) {
         if (item.is_local) {
           track.is_local = true;
         }

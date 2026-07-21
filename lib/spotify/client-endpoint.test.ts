@@ -16,7 +16,7 @@ function jsonResponse(body: unknown): Response {
   });
 }
 
-describe('SpotifyClient playlist endpoint (regression for #21)', () => {
+describe('SpotifyClient playlist endpoint uses non-deprecated /items', () => {
   let fetchSpy: ReturnType<typeof vi.fn>;
   let client: SpotifyClient;
 
@@ -31,7 +31,7 @@ describe('SpotifyClient playlist endpoint (regression for #21)', () => {
     vi.unstubAllGlobals();
   });
 
-  it('getPlaylistTracks calls /playlists/{id}/tracks (not /items)', async () => {
+  it('getPlaylistTracks calls /playlists/{id}/items (not deprecated /tracks)', async () => {
     fetchSpy.mockResolvedValue(jsonResponse({
       items: [],
       next: null,
@@ -42,19 +42,19 @@ describe('SpotifyClient playlist endpoint (regression for #21)', () => {
 
     expect(fetchSpy).toHaveBeenCalledTimes(1);
     const url = fetchSpy.mock.calls[0][0] as string;
-    expect(url).toContain('/playlists/playlist-123/tracks');
-    expect(url).not.toContain('/items');
+    expect(url).toContain('/playlists/playlist-123/items');
+    expect(url).not.toContain('/tracks');
   });
 
-  it('getAllPlaylistTracks paginates with /tracks across multiple pages', async () => {
+  it('getAllPlaylistTracks paginates with /items across multiple pages', async () => {
     fetchSpy
       .mockResolvedValueOnce(jsonResponse({
-        items: [{ track: { id: 't1' } }],
+        items: [{ item: { id: 't1' } }],
         next: 'next-url',
         total: 150,
       }))
       .mockResolvedValueOnce(jsonResponse({
-        items: [{ track: { id: 't2' } }],
+        items: [{ item: { id: 't2' } }],
         next: null,
         total: 150,
       }));
@@ -65,12 +65,12 @@ describe('SpotifyClient playlist endpoint (regression for #21)', () => {
     expect(fetchSpy).toHaveBeenCalledTimes(2);
     for (const call of fetchSpy.mock.calls) {
       const url = call[0] as string;
-      expect(url).toContain('/playlists/playlist-456/tracks');
-      expect(url).not.toContain('/items');
+      expect(url).toContain('/playlists/playlist-456/items');
+      expect(url).not.toContain('/tracks');
     }
   });
 
-  it('getPlaylistCreatedDate uses /tracks for both first and last page', async () => {
+  it('getPlaylistCreatedDate uses /items for both first and last page', async () => {
     fetchSpy
       .mockResolvedValueOnce(jsonResponse({
         items: [{ added_at: '2024-01-15T00:00:00Z' }],
@@ -86,8 +86,8 @@ describe('SpotifyClient playlist endpoint (regression for #21)', () => {
     expect(fetchSpy).toHaveBeenCalledTimes(2);
     for (const call of fetchSpy.mock.calls) {
       const url = call[0] as string;
-      expect(url).toContain('/playlists/playlist-789/tracks');
-      expect(url).not.toContain('/items');
+      expect(url).toContain('/playlists/playlist-789/items');
+      expect(url).not.toContain('/tracks');
     }
   });
 });

@@ -33,17 +33,24 @@ export class SpotifyClient {
     return response.json();
   }
 
-  async getPlaylistTracks(playlistId: string, limit: number = 100, offset: number = 0, signal?: AbortSignal): Promise<SpotifyTracksResponse> {
+  async getPlaylistTracks(playlistId: string, limit: number = 50, offset: number = 0, signal?: AbortSignal): Promise<SpotifyTracksResponse> {
     await spotifyRateLimiter.acquire();
     const params = new URLSearchParams({ limit: limit.toString(), offset: offset.toString() });
-    const response = await this.fetch(`/playlists/${playlistId}/tracks?${params.toString()}`, signal);
-    return response.json();
+    const response = await this.fetch(`/playlists/${playlistId}/items?${params.toString()}`, signal);
+    const data = await response.json();
+    if (data.items) {
+      data.items = data.items.map((i: Record<string, unknown>) => ({
+        ...i,
+        track: (i as Record<string, unknown>).item ?? i.track,
+      }));
+    }
+    return data;
   }
 
   async getAllPlaylistTracks(playlistId: string, signal?: AbortSignal): Promise<SpotifyPlaylistTrack[]> {
     const allTracks: SpotifyPlaylistTrack[] = [];
     let offset = 0;
-    const limit = 100;
+    const limit = 50;
 
     while (true) {
       const response = await this.getPlaylistTracks(playlistId, limit, offset, signal);
@@ -124,11 +131,11 @@ export class SpotifyClient {
   async getPlaylistCreatedDate(playlistId: string, signal?: AbortSignal): Promise<string | undefined> {
     await backgroundRateLimiter.acquire();
     const fields = 'items(added_at),total';
-    const limit = 100;
+    const limit = 50;
 
     // Fetch first page to get the total and the first page's dates
     const firstResponse = await this.fetch(
-      `/playlists/${playlistId}/tracks?fields=${fields}&limit=${limit}&offset=0`,
+      `/playlists/${playlistId}/items?fields=${fields}&limit=${limit}&offset=0`,
       signal,
     );
     const firstData = await firstResponse.json();
@@ -152,7 +159,7 @@ export class SpotifyClient {
     if (lastOffset <= 0) return earliest;
     await backgroundRateLimiter.acquire();
     const lastResponse = await this.fetch(
-      `/playlists/${playlistId}/tracks?fields=${fields}&limit=${limit}&offset=${lastOffset}`,
+      `/playlists/${playlistId}/items?fields=${fields}&limit=${limit}&offset=${lastOffset}`,
       signal,
     );
     const lastData = await lastResponse.json();
