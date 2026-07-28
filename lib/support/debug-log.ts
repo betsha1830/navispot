@@ -1,52 +1,21 @@
 /**
- * Lightweight verbose logger for debugging. Gated by:
- *   1. NODE_ENV !== 'production', OR
- *   2. localStorage flag `navispot.debug` === 'true'
+ * Lightweight logger for the four high-value failure sites. Lines are prefixed
+ * with `[navispot]` so users can filter their DevTools console and paste the
+ * filtered output when reporting issues.
  *
- * Use `log()` / `warn()` / `error()` instead of console.* directly so we can
- * ship to production without noise. Lines are prefixed with `[navispot]`
- * so users can filter their DevTools console.
+ * Levels:
+ *   - info()  routine breadcrumbs (dev mode only — keeps the live demo console quiet)
+ *   - warn()  anomalies (always on — useful in production for reports)
+ *   - error() thrown failures (always on)
  */
 
-const STORAGE_KEY = 'navispot.debug';
+const isDev = (): boolean => process.env.NODE_ENV !== 'production';
 
-function isEnabled(): boolean {
-  if (process.env.NODE_ENV !== 'production') return true;
-  if (typeof window === 'undefined') return false;
-  try {
-    return window.localStorage.getItem(STORAGE_KEY) === 'true';
-  } catch {
-    return false;
-  }
-}
-
-function emit(level: 'log' | 'warn' | 'error', args: unknown[]): void {
-  if (!isEnabled()) return;
+function emit(level: 'log' | 'warn' | 'error', args: unknown[], always: boolean): void {
+  if (!always && !isDev()) return;
   console[level]('[navispot]', ...args);
 }
 
-export const log = (...args: unknown[]): void => emit('log', args);
-export const warn = (...args: unknown[]): void => emit('warn', args);
-export const error = (...args: unknown[]): void => emit('error', args);
-
-export function enableDebug(): void {
-  if (typeof window === 'undefined') return;
-  try {
-    window.localStorage.setItem(STORAGE_KEY, 'true');
-  } catch {
-    /* ignore */
-  }
-}
-
-export function disableDebug(): void {
-  if (typeof window === 'undefined') return;
-  try {
-    window.localStorage.removeItem(STORAGE_KEY);
-  } catch {
-    /* ignore */
-  }
-}
-
-export function isDebugEnabled(): boolean {
-  return isEnabled();
-}
+export const info = (...args: unknown[]): void => emit('log', args, false);
+export const warn = (...args: unknown[]): void => emit('warn', args, true);
+export const error = (...args: unknown[]): void => emit('error', args, true);
