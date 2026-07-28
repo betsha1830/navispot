@@ -1,10 +1,41 @@
-import { SpotifyPlaylistsResponse, SpotifyTracksResponse, SpotifyUser, SpotifyToken, SpotifyPlaylist, SpotifyPlaylistTrack, SpotifySavedTracksResponse, SpotifySavedTrack, SpotifyPlaylistEntry } from '@/types';
+import { SpotifyPlaylistsResponse, SpotifyTracksResponse, SpotifyUser, SpotifyToken, SpotifyPlaylist, SpotifyPlaylistTrack, SpotifySavedTracksResponse, SpotifySavedTrack, SpotifyPlaylistEntry, SpotifyTrack } from '@/types';
 import { isTokenExpired } from './token-storage';
 import { SPOTIFY_STORAGE_KEY } from '@/types/auth-context';
 import { spotifyRateLimiter, backgroundRateLimiter } from './rate-limiter';
 import { normalizeEntries } from './track-identity';
+import { log as debugLog } from '@/lib/support/debug-log';
 
 const SPOTIFY_API_BASE = 'https://api.spotify.com/v1';
+
+// Cap how much of an error body we keep. Spotify's JSON error payloads are
+// typically <500 bytes; 8 KB is plenty for diagnostics and bounded enough
+// that a misbehaving CDN returning a 5 MB HTML page can't bloat every error.
+const MAX_ERROR_BODY_CHARS = 8 * 1024;
+const ERROR_MESSAGE_BODY_CHARS = 200;
+
+export class SpotifyApiError extends Error {
+  readonly status: number;
+  readonly body: string;
+  readonly bodyTruncated: boolean;
+  readonly bodyOriginalSize: number;
+
+  constructor(status: number, body: string) {
+    const originalSize = body.length;
+    const truncated = originalSize > MAX_ERROR_BODY_CHARS;
+    const stored = truncated ? body.slice(0, MAX_ERROR_BODY_CHARS) : body;
+    const truncationNote = truncated
+      ? ` (body truncated from ${originalSize} to ${MAX_ERROR_BODY_CHARS} chars)`
+      : '';
+    super(
+      `Spotify API error ${status}: ${stored.slice(0, ERROR_MESSAGE_BODY_CHARS)}${truncationNote}`,
+    );
+    this.name = 'SpotifyApiError';
+    this.status = status;
+    this.body = stored;
+    this.bodyTruncated = truncated;
+    this.bodyOriginalSize = originalSize;
+  }
+}
 
 export class SpotifyClient {
   private token: SpotifyToken | null = null;
@@ -37,13 +68,18 @@ export class SpotifyClient {
     await spotifyRateLimiter.acquire();
     const params = new URLSearchParams({ limit: limit.toString(), offset: offset.toString() });
     const response = await this.fetch(`/playlists/${playlistId}/items?${params.toString()}`, signal);
-    const data = await response.json();
-    if (data.items) {
-      data.items = data.items.map((i: Record<string, unknown>) => ({
+    const data: SpotifyTracksResponse = await response.json();
+    if (!Array.isArray(data.items)) {
+      data.items = [];
+    } else {
+      data.items = data.items.map((i) => ({
         ...i,
-        track: (i as Record<string, unknown>).item ?? i.track,
+        track: ((i as unknown as Record<string, unknown>).item as SpotifyTrack | null | undefined) ?? i.track,
       }));
     }
+    debugLog(
+      `getPlaylistTracks(${playlistId}, offset=${offset}) → ${data.items.length} items (total=${data.total})`,
+    );
     return data;
   }
 
@@ -54,6 +90,9 @@ export class SpotifyClient {
 
     while (true) {
       const response = await this.getPlaylistTracks(playlistId, limit, offset, signal);
+      if (!Array.isArray(response.items) || response.items.length === 0) {
+        break;
+      }
       allTracks.push(...response.items);
 
       if (!response.next) break;
@@ -88,6 +127,9 @@ export class SpotifyClient {
 
     while (true) {
       const response = await this.getSavedTracks(limit, offset, signal);
+      if (!Array.isArray(response.items) || response.items.length === 0) {
+        break;
+      }
       allTracks.push(...response.items);
 
       if (!response.next) break;
@@ -112,6 +154,9 @@ export class SpotifyClient {
 
     while (true) {
       const response = await this.getPlaylists(limit, offset, signal, bypassCache);
+      if (!Array.isArray(response.items) || response.items.length === 0) {
+        break;
+      }
       allPlaylists.push(...response.items);
 
       if (!response.next) break;
@@ -138,11 +183,12 @@ export class SpotifyClient {
       `/playlists/${playlistId}/items?fields=${fields}&limit=${limit}&offset=0`,
       signal,
     );
-    const firstData = await firstResponse.json();
+    const firstData: { items?: { added_at?: string }[]; total?: number } = await firstResponse.json();
+    if (!Array.isArray(firstData.items)) return undefined;
     const total: number = firstData.total || 0;
 
     let earliest: string | undefined;
-    for (const item of firstData.items || []) {
+    for (const item of firstData.items) {
       if (item.added_at) {
         if (!earliest || item.added_at < earliest) {
           earliest = item.added_at;
@@ -162,9 +208,10 @@ export class SpotifyClient {
       `/playlists/${playlistId}/items?fields=${fields}&limit=${limit}&offset=${lastOffset}`,
       signal,
     );
-    const lastData = await lastResponse.json();
+    const lastData: { items?: { added_at?: string }[] } = await lastResponse.json();
+    if (!Array.isArray(lastData.items)) return earliest;
 
-    for (const item of lastData.items || []) {
+    for (const item of lastData.items) {
       if (item.added_at) {
         if (!earliest || item.added_at < earliest) {
           earliest = item.added_at;
@@ -280,6 +327,7 @@ export class SpotifyClient {
     }
 
     let lastError: Error | null = null;
+    let lastBody = '';
     for (let attempt = 0; attempt < 3; attempt++) {
       const response = await fetch(`${SPOTIFY_API_BASE}${endpoint}`, fetchOptions);
 
@@ -292,13 +340,20 @@ export class SpotifyClient {
       }
 
       if (response.status >= 500 && response.status < 600) {
+        lastBody = await response.text().catch(() => '');
         lastError = new Error(`Spotify API error: ${response.status}`);
         if (attempt < 2) {
           const delay = Math.pow(2, attempt) * 1000;
           await new Promise(resolve => setTimeout(resolve, delay));
           continue;
         }
-        throw lastError;
+        throw new SpotifyApiError(response.status, lastBody);
+      }
+
+      if (!response.ok) {
+        const body = await response.text().catch(() => '');
+        debugLog(`${response.status} ${endpoint}`, body.slice(0, 300));
+        throw new SpotifyApiError(response.status, body);
       }
 
       return response;
