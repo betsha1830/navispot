@@ -2,7 +2,7 @@ import https from 'node:https';
 import type { SpotifyTrack } from '@/types/spotify';
 import type { ImportedPlaylist } from '@/types/public-playlist';
 import { normalizeEntries } from './track-identity';
-import { log as debugLog } from '@/lib/support/debug-log';
+import { info as debugLog, warn } from '@/lib/support/debug-log';
 
 const SPOTIFY_API_BASE = 'https://api.spotify.com/v1';
 const SPOTIFY_AUTH_BASE = 'https://accounts.spotify.com/api/token';
@@ -169,7 +169,7 @@ export async function getPublicPlaylist(
     const page: PlaylistTracksPage = await spotifyGet<PlaylistTracksPage>(token, nextPath);
     pageCount += 1;
     if (!Array.isArray(page.items)) {
-      debugLog(`  page ${pageCount}: items missing, stopping pagination`);
+      warn(`getPublicPlaylist(${playlistId}) page ${pageCount}: items array missing in response`);
       break;
     }
     debugLog(`  page ${pageCount}: ${page.items.length} items`);

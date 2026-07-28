@@ -3,7 +3,7 @@ import { isTokenExpired } from './token-storage';
 import { SPOTIFY_STORAGE_KEY } from '@/types/auth-context';
 import { spotifyRateLimiter, backgroundRateLimiter } from './rate-limiter';
 import { normalizeEntries } from './track-identity';
-import { log as debugLog } from '@/lib/support/debug-log';
+import { info as debugLog, warn } from '@/lib/support/debug-log';
 
 const SPOTIFY_API_BASE = 'https://api.spotify.com/v1';
 
@@ -80,6 +80,11 @@ export class SpotifyClient {
     debugLog(
       `getPlaylistTracks(${playlistId}, offset=${offset}) → ${data.items.length} items (total=${data.total})`,
     );
+    if (data.total > 0 && data.items.length === 0) {
+      warn(
+        `getPlaylistTracks(${playlistId}, offset=${offset}): Spotify says total=${data.total} but returned 0 items`,
+      );
+    }
     return data;
   }
 
