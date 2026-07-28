@@ -2,6 +2,7 @@ import https from 'node:https';
 import type { SpotifyTrack } from '@/types/spotify';
 import type { ImportedPlaylist } from '@/types/public-playlist';
 import { normalizeEntries } from './track-identity';
+import { log as debugLog } from '@/lib/support/debug-log';
 
 const SPOTIFY_API_BASE = 'https://api.spotify.com/v1';
 const SPOTIFY_AUTH_BASE = 'https://accounts.spotify.com/api/token';
@@ -159,10 +160,21 @@ export async function getPublicPlaylist(
   let nullTrackCount = 0;
   let nextPath: string | null =
     `/playlists/${playlistId}/items?fields=items(item(id,name,artists(id,name),album(id,name,release_date),duration_ms,external_ids,external_urls,uri,is_local),is_local,added_at),next,snapshot_id&limit=50`;
+  debugLog(
+    `getPublicPlaylist(${playlistId}) meta:`,
+    { name: meta.name, owner: meta.owner.display_name, total: meta.tracks.total },
+  );
+  let pageCount = 0;
   while (nextPath) {
     const page: PlaylistTracksPage = await spotifyGet<PlaylistTracksPage>(token, nextPath);
+    pageCount += 1;
+    if (!Array.isArray(page.items)) {
+      debugLog(`  page ${pageCount}: items missing, stopping pagination`);
+      break;
+    }
+    debugLog(`  page ${pageCount}: ${page.items.length} items`);
     for (const item of page.items) {
-      const itemData = (item as Record<string, unknown>).item as SpotifyTrack | null;
+      const itemData = (item as unknown as Record<string, unknown>).item as SpotifyTrack | null;
       const track = itemData ?? item.track;
       if (track) {
         if (item.is_local) {

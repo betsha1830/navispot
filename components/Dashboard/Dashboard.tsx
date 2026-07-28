@@ -8,6 +8,7 @@ import { SpotifyPlaylist, SpotifyTrack } from "@/types/spotify"
 import { NavidromePlaylist } from "@/types/navidrome"
 import { PlaylistTable } from "@/components/Dashboard/PlaylistTable"
 import { ExportLayoutManager } from "@/components/Dashboard/ExportLayoutManager"
+import { log } from "@/lib/support/debug-log"
 
 import { ConfirmationPopup } from "@/components/Dashboard/ConfirmationPopup"
 import { CancelConfirmationDialog } from "@/components/Dashboard/CancelConfirmationDialog"
@@ -1595,6 +1596,7 @@ export function Dashboard() {
       }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Export failed"
+      log('export failed:', err)
 
       if (err instanceof DOMException && err.name === 'AbortError') {
         toast.showWarning("Export was cancelled")
