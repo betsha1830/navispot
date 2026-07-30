@@ -856,13 +856,9 @@ export class NavidromeApiClient {
     const comment = JSON.stringify(metadata);
     const url = `${this.baseUrl}/api/playlist/${playlistId}`;
     const response = await fetch(url, {
-      method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-nd-authorization': `Bearer ${this._ndToken}`,
-        'x-nd-client-unique-id': `${this._ndClientId}`,
-      },
-      body: JSON.stringify({ comment }),
+      method: 'PUT',
+      headers: this._getNativeHeaders(),
+      body: JSON.stringify({ id: playlistId, comment }),
       signal,
     });
 
