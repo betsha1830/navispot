@@ -61,6 +61,7 @@ export interface PlaylistExporterOptions {
   mode?: ExportMode;
   existingPlaylistId?: string;
   skipUnmatched?: boolean;
+  isPublic?: boolean;
   onProgress?: ProgressCallback;
   cachedData?: PlaylistExportDataLocal | PlaylistExportData | PlaylistExportDataV2;
   signal?: AbortSignal;
@@ -72,7 +73,7 @@ export interface PlaylistExporter {
     matches: TrackMatch[],
     options?: PlaylistExporterOptions
   ): Promise<ExportResult>;
-  createPlaylist(name: string, songIds: string[]): Promise<{ id: string; success: boolean }>;
+  createPlaylist(name: string, songIds: string[], isPublic?: boolean): Promise<{ id: string; success: boolean }>;
   appendToPlaylist(playlistId: string, songIds: string[]): Promise<{ success: boolean }>;
   overwritePlaylist(playlistId: string, songIds: string[]): Promise<{ success: boolean }>;
 }
@@ -92,6 +93,7 @@ export class DefaultPlaylistExporter implements PlaylistExporter {
     const startTime = Date.now();
     const mode = options.mode ?? 'create';
     const skipUnmatched = options.skipUnmatched ?? false;
+    const isPublic = options.isPublic ?? false;
     const onProgress = options.onProgress;
     const { signal } = options;
 
@@ -165,7 +167,7 @@ export class DefaultPlaylistExporter implements PlaylistExporter {
       switch (mode) {
         case 'create': {
           checkAbort();
-          const createResult = await this.createPlaylist(playlistName, songIds, signal);
+          const createResult = await this.createPlaylist(playlistName, songIds, isPublic, signal);
           if (!createResult.success || !createResult.id) {
             errors.push({
               trackName: 'N/A',
@@ -283,6 +285,22 @@ export class DefaultPlaylistExporter implements PlaylistExporter {
       });
     }
 
+    // Apply the user's visibility preference. For 'create' this was already set
+    // on the new playlist; for 'append'/'overwrite'/'update' we PATCH it onto
+    // the existing playlist. Errors here are non-fatal — tracks are exported
+    // either way, only the visibility may be left unchanged.
+    if (playlistId) {
+      checkAbort();
+      const visibilityResult = await this.navidromeClient.updatePlaylistVisibility(playlistId, isPublic, signal);
+      if (!visibilityResult.success) {
+        errors.push({
+          trackName: 'N/A',
+          artistName: 'N/A',
+          reason: `Failed to set playlist visibility: ${visibilityResult.error || 'Unknown error'}`,
+        });
+      }
+    }
+
     if (onProgress) {
       checkAbort();
       await onProgress({
@@ -311,8 +329,8 @@ export class DefaultPlaylistExporter implements PlaylistExporter {
     };
   }
 
-  async createPlaylist(name: string, songIds: string[], signal?: AbortSignal): Promise<{ id: string; success: boolean }> {
-    const result = await this.navidromeClient.createPlaylist(name, songIds, signal);
+  async createPlaylist(name: string, songIds: string[], isPublic: boolean = false, signal?: AbortSignal): Promise<{ id: string; success: boolean }> {
+    const result = await this.navidromeClient.createPlaylist(name, songIds, isPublic, signal);
     return {
       id: result.id,
       success: result.success,

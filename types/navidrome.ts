@@ -6,6 +6,7 @@ export interface NavidromePlaylist {
   duration: number;
   createdAt: string;
   updatedAt: string;
+  public?: boolean;
 }
 
 export interface NavidromeCredentials {

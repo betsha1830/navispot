@@ -310,7 +310,7 @@ export class NavidromeApiClient {
     };
   }
 
-  async createPlaylist(name: string, songIds: string[], signal?: AbortSignal): Promise<{
+  async createPlaylist(name: string, songIds: string[], isPublic: boolean = false, signal?: AbortSignal): Promise<{
     id: string;
     success: boolean;
     error?: string;
@@ -324,7 +324,7 @@ export class NavidromeApiClient {
           'x-nd-authorization': `Bearer ${this._ndToken}`,
           'x-nd-client-unique-id': `${this._ndClientId}`,
         },
-        body: JSON.stringify({ name }),
+        body: JSON.stringify({ name, public: isPublic }),
         signal,
       });
 
@@ -856,18 +856,38 @@ export class NavidromeApiClient {
     const comment = JSON.stringify(metadata);
     const url = `${this.baseUrl}/api/playlist/${playlistId}`;
     const response = await fetch(url, {
-      method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-nd-authorization': `Bearer ${this._ndToken}`,
-        'x-nd-client-unique-id': `${this._ndClientId}`,
-      },
-      body: JSON.stringify({ comment }),
+      method: 'PUT',
+      headers: this._getNativeHeaders(),
+      body: JSON.stringify({ id: playlistId, comment }),
       signal,
     });
 
     if (!response.ok) {
       throw new Error(`Failed to update playlist comment: ${response.status} ${response.statusText}`);
+    }
+  }
+
+  async updatePlaylistVisibility(playlistId: string, isPublic: boolean, signal?: AbortSignal): Promise<{ success: boolean; error?: string }> {
+    await this._ensureAuthenticated();
+    try {
+      const url = `${this.baseUrl}/api/playlist/${playlistId}`;
+      const response = await fetch(url, {
+        method: 'PUT',
+        headers: this._getNativeHeaders(),
+        body: JSON.stringify({ id: playlistId, public: isPublic }),
+        signal,
+      });
+
+      if (!response.ok) {
+        return { success: false, error: `HTTP error: ${response.status} ${response.statusText}` };
+      }
+
+      return { success: true };
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        throw error;
+      }
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
     }
   }
 
@@ -925,6 +945,7 @@ export class NavidromeApiClient {
       duration: item.duration,
       createdAt: item.createdAt || '',
       updatedAt: item.updatedAt || '',
+      public: item.public,
     };
   }
 }

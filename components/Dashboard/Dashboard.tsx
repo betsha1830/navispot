@@ -46,6 +46,8 @@ import {
 import {
   loadForceExportPlaylists,
   saveForceExportPlaylists,
+  loadExportPlaylistsAsPublic,
+  saveExportPlaylistsAsPublic,
 } from "@/lib/settings/export-settings"
 import {
   loadPlaylistExportData,
@@ -136,6 +138,8 @@ export function Dashboard() {
   const [forceExportPlaylists, setForceExportPlaylists] = useState<boolean>(() =>
     loadForceExportPlaylists(),
   )
+  const [exportPlaylistsAsPublic, setExportPlaylistsAsPublic] =
+    useState<boolean>(() => loadExportPlaylistsAsPublic())
   const [currentUnmatchedPlaylistId, setCurrentUnmatchedPlaylistId] = useState<
     string | null
   >(null)
@@ -1306,6 +1310,21 @@ export function Dashboard() {
 
         // Skip unchanged playlists entirely (no tracks added/removed)
         if (upToDate && existingNavidromeId && !forceExportPlaylists && !isLikedSongs) {
+          // Tracks didn't change, but the user's visibility preference may have
+          // since been toggled — apply it directly so the on-disk state matches
+          // the current setting. The exporter would normally do this, but the
+          // early-return skips it.
+          const visibilityResult = await navidromeClient.updatePlaylistVisibility(
+            existingNavidromeId,
+            exportPlaylistsAsPublic,
+            signal,
+          )
+          if (!visibilityResult.success) {
+            toast.showWarning(
+              `Couldn't update visibility for "${item.name}": ${visibilityResult.error || "Unknown error"}`,
+            )
+          }
+
           exportResultData = {
             statistics: {
               total: tracks.length,
@@ -1441,6 +1460,7 @@ export function Dashboard() {
             existingPlaylistId:
               !forceCreate ? cachedData?.navidromePlaylistId : undefined,
             skipUnmatched: false,
+            isPublic: exportPlaylistsAsPublic,
             cachedData:
               !forceCreate && useDifferentialMatching ? cachedData : undefined,
             signal,
@@ -1646,6 +1666,11 @@ export function Dashboard() {
   const handleForceExportChange = useCallback((enabled: boolean) => {
     setForceExportPlaylists(enabled)
     saveForceExportPlaylists(enabled)
+  }, [])
+
+  const handleExportPlaylistsAsPublicChange = useCallback((isPublic: boolean) => {
+    setExportPlaylistsAsPublic(isPublic)
+    saveExportPlaylistsAsPublic(isPublic)
   }, [])
 
   const handleConfirmCancel = () => {
@@ -1927,6 +1952,8 @@ export function Dashboard() {
         onLayoutChange={handleLayoutChange}
         forceExportPlaylists={forceExportPlaylists}
         onForceExportChange={handleForceExportChange}
+        exportPlaylistsAsPublic={exportPlaylistsAsPublic}
+        onExportPlaylistsAsPublicChange={handleExportPlaylistsAsPublicChange}
       />
       
       <ExportLayoutManager
