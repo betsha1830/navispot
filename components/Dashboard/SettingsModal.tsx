@@ -16,6 +16,8 @@ interface SettingsModalProps {
   onLayoutChange: (layout: DashboardLayout) => void
   forceExportPlaylists: boolean
   onForceExportChange: (enabled: boolean) => void
+  exportPlaylistsAsPublic: boolean
+  onExportPlaylistsAsPublicChange: (isPublic: boolean) => void
 }
 
 type SettingsSection = "data" | "layout" | "export"
@@ -39,6 +41,8 @@ export function SettingsModal({
   onLayoutChange,
   forceExportPlaylists,
   onForceExportChange,
+  exportPlaylistsAsPublic,
+  onExportPlaylistsAsPublicChange,
 }: SettingsModalProps) {
   const { navidrome } = useAuth()
   const [activeSection, setActiveSection] = useState<SettingsSection>("data")
@@ -439,6 +443,42 @@ export function SettingsModal({
                         aria-hidden="true"
                         className={`pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow-lg ring-0 transition-transform ${
                           forceExportPlaylists
+                            ? "translate-x-5"
+                            : "translate-x-0"
+                        }`}
+                      />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 p-4">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex-1 min-w-0">
+                      <h4 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
+                        Export playlists as public
+                      </h4>
+                      <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
+                        New and updated playlists are marked as public in
+                        Navidrome. When off, they remain private
+                        (Navidrome&apos;s default).
+                      </p>
+                    </div>
+                    <button
+                      role="switch"
+                      aria-checked={exportPlaylistsAsPublic}
+                      onClick={() =>
+                        onExportPlaylistsAsPublicChange(!exportPlaylistsAsPublic)
+                      }
+                      className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${
+                        exportPlaylistsAsPublic
+                          ? "bg-green-500"
+                          : "bg-zinc-200 dark:bg-zinc-700"
+                      }`}
+                    >
+                      <span
+                        aria-hidden="true"
+                        className={`pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow-lg ring-0 transition-transform ${
+                          exportPlaylistsAsPublic
                             ? "translate-x-5"
                             : "translate-x-0"
                         }`}
