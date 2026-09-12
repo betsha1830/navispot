@@ -442,9 +442,12 @@ export function Dashboard() {
   // Background fetch of playlist created dates (earliest added_at)
   // Fetches progressively — updates state after each playlist for immediate UI feedback
   // Caches dates in localStorage to avoid re-fetching on every page load.
-  // Yields to foreground track fetches to avoid starving the rate limiter.
+  // Yields to foreground track fetches to avoid starving the rate limiter,
+  // and pauses entirely while an export is running so background requests
+  // can't compete with export traffic for Spotify's per-app quota.
   useEffect(() => {
     if (!spotify.isAuthenticated || !spotify.token || playlists.length === 0) return
+    if (isExporting) return
 
     const CACHE_KEY = 'navispot-playlist-created-dates'
     let cancelled = false
@@ -488,7 +491,11 @@ export function Dashboard() {
       try {
         spotifyClient.setToken(spotify.token!)
 
-        const CONCURRENCY = 3
+        // Sequential batches of 2. These are background enrichment calls
+        // (dates shown in one table column) — a slower pace keeps the shared
+        // per-app Spotify quota free for user-initiated work. Dates are
+        // cached in localStorage so this cost is paid once per playlist.
+        const CONCURRENCY = 2
         for (let i = 0; i < missingIds.length; i += CONCURRENCY) {
           if (cancelled) break
 
@@ -529,7 +536,7 @@ export function Dashboard() {
 
     fetchDates()
     return () => { cancelled = true }
-  }, [spotify.isAuthenticated, spotify.token, playlists])
+  }, [spotify.isAuthenticated, spotify.token, playlists, isExporting])
 
   // Sync selectedIds with selectedPlaylistsStats for real-time population.
   // Triggered when the user checks/unchecks a row in the main table — the

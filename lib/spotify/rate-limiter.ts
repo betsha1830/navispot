@@ -40,6 +40,13 @@ export class RateLimiter {
   }
 }
 
+// Foreground: user-visible requests (playlist/track fetches, exports).
+// Spotify does not publish exact rolling-window numbers, but development-mode
+// quota buckets are small, so we stay conservative.
 export const spotifyRateLimiter = new RateLimiter(30, 60000);
 
-export const backgroundRateLimiter = new RateLimiter(50, 30000);
+// Background: non-critical enrichment (playlist created dates) via the
+// getPlaylistCreatedDate endpoint. Deliberately slower than the foreground
+// limiter so background fetches cannot starve or trip rate limits for
+// user-initiated work. Dates are cached, so the slower pace is fine.
+export const backgroundRateLimiter = new RateLimiter(20, 60000);
