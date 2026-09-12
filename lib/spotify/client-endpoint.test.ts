@@ -135,11 +135,72 @@ describe('SpotifyClient playlist error handling (regression for issue #9)', () =
       .rejects.toThrow(/404/);
   });
 
-  it('getAllPlaylistTracks throws SpotifyApiError(429) on rate limit', async () => {
-    fetchSpy.mockResolvedValue(errorResponse(429));
+  it('getAllPlaylistTracks throws SpotifyApiError(429) on rate limit after exhausting retries', async () => {
+    fetchSpy.mockImplementation(
+      () => Promise.resolve(new Response(JSON.stringify({ error: { status: 429, message: 'Too many requests' } }), {
+        status: 429,
+        headers: { 'Content-Type': 'application/json', 'Retry-After': '0' },
+      })),
+    );
 
     await expect(client.getAllPlaylistTracks('rate-limited'))
       .rejects.toMatchObject({ status: 429 });
+
+    // 3 attempts: initial + 2 retries
+    expect(fetchSpy).toHaveBeenCalledTimes(3);
+  });
+
+  it('retries 429 after Retry-After seconds and succeeds when Spotify recovers', async () => {
+    fetchSpy
+      .mockResolvedValueOnce(new Response(JSON.stringify({ error: { status: 429, message: 'Too many requests' } }), {
+        status: 429,
+        headers: { 'Content-Type': 'application/json', 'Retry-After': '0' },
+      }))
+      .mockResolvedValueOnce(jsonResponse({
+        items: [{ item: { id: 't1' } }],
+        next: null,
+        total: 1,
+      }));
+
+    const tracks = await client.getAllPlaylistTracks('rate-limited-then-ok');
+
+    expect(tracks).toHaveLength(1);
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it('retries 429 with exponential backoff when Retry-After header is missing', async () => {
+    fetchSpy
+      .mockResolvedValueOnce(new Response(JSON.stringify({ error: { status: 429, message: 'Too many requests' } }), {
+        status: 429,
+        headers: { 'Content-Type': 'application/json' },
+      }))
+      .mockResolvedValueOnce(jsonResponse({
+        items: [],
+        next: null,
+        total: 0,
+      }));
+
+    const tracks = await client.getAllPlaylistTracks('rate-limited-no-header');
+    expect(tracks).toEqual([]);
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it('aborts during a 429 backoff instead of waiting out the retry delay', async () => {
+    const controller = new AbortController();
+    fetchSpy.mockImplementation(
+      () => Promise.resolve(new Response(JSON.stringify({ error: { status: 429, message: 'Too many requests' } }), {
+        status: 429,
+        headers: { 'Content-Type': 'application/json', 'Retry-After': '3600' },
+      })),
+    );
+
+    const promise = client.getAllPlaylistTracks('rate-limited-long-wait', controller.signal);
+    // Let the first fetch resolve so we're inside the backoff sleep,
+    // then abort — the sleep should reject immediately.
+    await new Promise((r) => setTimeout(r, 10));
+    controller.abort();
+
+    await expect(promise).rejects.toMatchObject({ name: 'AbortError' });
   });
 
   it('getAllPlaylistTracks does NOT crash with "items is undefined" on a 2xx Spotify error body', async () => {

@@ -13,6 +13,32 @@ const SPOTIFY_API_BASE = 'https://api.spotify.com/v1';
 const MAX_ERROR_BODY_CHARS = 8 * 1024;
 const ERROR_MESSAGE_BODY_CHARS = 200;
 
+/**
+ * Sleeps for `ms`, but rejects immediately with an AbortError if `signal`
+ * fires first. Used for retry backoffs so cancelling an export doesn't have
+ * to wait out a long Retry-After delay.
+ */
+function abortableSleep(ms: number, signal?: AbortSignal): Promise<void> {
+  if (ms <= 0) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort);
+      resolve();
+    }, ms);
+    function onAbort() {
+      clearTimeout(timer);
+      reject(new DOMException('Request was aborted', 'AbortError'));
+    }
+    if (signal) {
+      if (signal.aborted) {
+        onAbort();
+        return;
+      }
+      signal.addEventListener('abort', onAbort, { once: true });
+    }
+  });
+}
+
 export class SpotifyApiError extends Error {
   readonly status: number;
   readonly body: string;
@@ -342,6 +368,37 @@ export class SpotifyClient {
           return this.fetch(endpoint, signal, options, bypassCache);
         }
         throw new Error('Token expired and refresh failed');
+      }
+
+      if (response.status === 429) {
+        // Spotify rate limits: honor the Retry-After header (in seconds) when
+        // present, otherwise back off exponentially. Docs: "The header of the
+        // 429 response will normally include a Retry-After header with a value
+        // in seconds." Retrying here (instead of throwing) keeps large
+        // exports alive instead of killing them on the first 429.
+        lastBody = await response.text().catch(() => '');
+        lastError = new SpotifyApiError(429, lastBody);
+        if (attempt < 2) {
+          const retryAfterHeader = response.headers.get('Retry-After');
+          let delayMs: number;
+          if (retryAfterHeader !== null) {
+            const retryAfterSec = Number(retryAfterHeader);
+            if (Number.isFinite(retryAfterSec)) {
+              delayMs = Math.max(0, retryAfterSec * 1000);
+            } else {
+              // Retry-After may be an HTTP-date; fall back to exponential.
+              const retryDate = Date.parse(retryAfterHeader);
+              delayMs = Number.isFinite(retryDate)
+                ? Math.max(0, retryDate - Date.now())
+                : Math.pow(2, attempt) * 1000;
+            }
+          } else {
+            delayMs = Math.pow(2, attempt) * 1000;
+          }
+          await abortableSleep(delayMs, signal);
+          continue;
+        }
+        throw new SpotifyApiError(429, lastBody);
       }
 
       if (response.status >= 500 && response.status < 600) {
