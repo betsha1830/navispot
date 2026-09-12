@@ -1940,6 +1940,29 @@ export function Dashboard() {
 
   return (
     <div>
+      {fetchError && (
+        <div
+          role="alert"
+          className="mb-4 flex flex-col gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 dark:border-red-900/50 dark:bg-red-950/40 sm:flex-row sm:items-center sm:justify-between"
+        >
+          <div className="flex items-start gap-2 text-sm text-red-700 dark:text-red-300">
+            <svg className="mt-0.5 h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden="true">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M5.07 19H19a2 2 0 001.73-3L13.73 4a2 2 0 00-3.46 0L3.34 16a2 2 0 001.73 3z" />
+            </svg>
+            <span>{fetchError}</span>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            <button
+              type="button"
+              onClick={() => refreshData()}
+              disabled={refreshing}
+              className="rounded-md border border-red-300 bg-white px-3 py-1.5 text-xs font-medium text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-red-800 dark:bg-transparent dark:text-red-300 dark:hover:bg-red-950/60"
+            >
+              {refreshing ? "Retrying…" : "Retry"}
+            </button>
+          </div>
+        </div>
+      )}
       <CancelConfirmationDialog
         isOpen={showCancelConfirmation}
         onClose={handleCloseCancelConfirmation}

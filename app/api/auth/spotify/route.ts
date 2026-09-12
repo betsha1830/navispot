@@ -1,8 +1,8 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { generateState } from '@/lib/spotify/auth-url';
 import { SPOTIFY_SCOPES } from '@/types';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   const state = generateState();
   
   const codeVerifier = generateCodeVerifier();
@@ -19,25 +19,31 @@ export async function GET() {
   });
 
   const authUrl = `https://accounts.spotify.com/authorize?${params.toString()}`;
-  
+
   const response = NextResponse.json({ authUrl, state });
+
+  // Cookies must be `secure` only when the user actually reaches the app
+  // over HTTPS. Self-hosters commonly serve NaviSpot over plain HTTP on a
+  // LAN (http://192.168.x.x:3883); a secure cookie there is silently
+  // dropped by the browser and the login appears to work but never sticks.
+  const isHttps = shouldSecureCookies(request);
 
   response.cookies.set('spotify_auth_state', state, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
+    secure: isHttps,
     sameSite: 'lax',
     maxAge: 60 * 10,
     path: '/',
   });
-  
+
   response.cookies.set('spotify_code_verifier', codeVerifier, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
+    secure: isHttps,
     sameSite: 'lax',
     maxAge: 60 * 10,
     path: '/',
   });
-  
+
   return response;
 }
 
@@ -55,6 +61,30 @@ function generateCodeVerifier(): string {
   const array = new Uint8Array(32);
   crypto.getRandomValues(array);
   return base64URLEncode(array);
+}
+
+/**
+ * Resolves the protocol the client actually used, trusting the proxy's
+ * x-forwarded-proto header when present (set by reverse proxies like
+ * Caddy/nginx), otherwise from the request URL.
+ */
+function protocolFrom(request: NextRequest): string {
+  const forwarded = request.headers.get('x-forwarded-proto');
+  if (forwarded) return forwarded.split(',')[0].trim();
+  return request.nextUrl.protocol.replace(':', '');
+}
+
+/**
+ * Whether auth cookies should be marked Secure. Derived from the actual
+ * request protocol so LAN-HTTP self-hosters keep working, unless the
+ * operator forces it (for direct-HTTPS deployments without a trusted
+ * proxy that sets x-forwarded-proto).
+ */
+function shouldSecureCookies(request: NextRequest): boolean {
+  if (process.env.FORCE_SECURE_COOKIES === '1' || process.env.FORCE_SECURE_COOKIES === 'true') {
+    return true;
+  }
+  return protocolFrom(request) === 'https';
 }
 
 function base64URLEncode(buffer: Uint8Array): string {

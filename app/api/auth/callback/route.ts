@@ -2,14 +2,24 @@ import { NextRequest, NextResponse } from 'next/server';
 import { SpotifyToken } from '@/types';
 
 export async function GET(request: NextRequest) {
-  const host = request.headers.get('x-forwarded-host') || request.headers.get('host') || 'navispot.queen.pro.et';
-  const protocol = request.headers.get('x-forwarded-proto') || 'https';
-  const baseUrl = `${protocol}://${host}`;
-  
+  const host = request.headers.get('x-forwarded-host') || request.headers.get('host') || 'navispot.gaga.pro.et';
+  // Derive the base URL from the request itself, falling back to the
+  // configured public URL. The old hardcoded fallback pointed at a domain
+  // this app no longer uses, so users with missing proxy headers were
+  // redirected somewhere dead.
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/+$/, '')
+    || `${protocolFrom(request)}://${host}`;
+
   const searchParams = request.nextUrl.searchParams;
   const code = searchParams.get('code');
   const state = searchParams.get('state');
   const error = searchParams.get('error');
+
+  // Cookies must be `secure` only when the user actually reaches the app
+  // over HTTPS. Self-hosters commonly serve NaviSpot over plain HTTP on a
+  // LAN (http://192.168.x.x:3883); a secure cookie there is silently
+  // dropped by the browser and the login appears to work but never sticks.
+  const isHttps = shouldSecureCookies(request);
 
   if (error) {
     return NextResponse.redirect(new URL(`/?error=${error}`, baseUrl));
@@ -47,7 +57,7 @@ export async function GET(request: NextRequest) {
     
     response.cookies.set('spotify_token', encryptedToken, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
+      secure: isHttps,
       sameSite: 'lax',
       maxAge: 60 * 60 * 24 * 7,
       path: '/',
@@ -98,4 +108,28 @@ async function exchangeCodeForToken(code: string, codeVerifier: string): Promise
   }
 
   return response.json();
+}
+
+/**
+ * Resolves the protocol the client actually used, trusting the proxy's
+ * x-forwarded-proto header when present (set by reverse proxies like
+ * Caddy/nginx), otherwise from the request URL.
+ */
+function protocolFrom(request: NextRequest): string {
+  const forwarded = request.headers.get('x-forwarded-proto');
+  if (forwarded) return forwarded.split(',')[0].trim();
+  return request.nextUrl.protocol.replace(':', '');
+}
+
+/**
+ * Whether auth cookies should be marked Secure. Derived from the actual
+ * request protocol so LAN-HTTP self-hosters keep working, unless the
+ * operator forces it (for direct-HTTPS deployments without a trusted
+ * proxy that sets x-forwarded-proto).
+ */
+function shouldSecureCookies(request: NextRequest): boolean {
+  if (process.env.FORCE_SECURE_COOKIES === '1' || process.env.FORCE_SECURE_COOKIES === 'true') {
+    return true;
+  }
+  return protocolFrom(request) === 'https';
 }
