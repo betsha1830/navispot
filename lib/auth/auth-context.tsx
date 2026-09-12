@@ -125,12 +125,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         body: JSON.stringify({ refreshToken: token.refreshToken }),
       });
 
+      if (response.status === 400) {
+        // invalid_grant / invalid_request — refresh token is permanently
+        // dead (6-month expiry or revoked). Clear it so the user is sent
+        // back through the login flow instead of a dead session.
+        localStorage.removeItem(SPOTIFY_STORAGE_KEY);
+        setSpotify({ isAuthenticated: false, user: null, token: null });
+        setFetchError('Your Spotify session has expired. Please reconnect Spotify.');
+        return false;
+      }
+
       if (!response.ok) return false;
 
       const newToken = await response.json();
       const updatedToken: SpotifyToken = {
         ...token,
         accessToken: newToken.access_token,
+        // Spotify may rotate refresh tokens; keep the old one when the
+        // response does not include a new one.
+        refreshToken: newToken.refresh_token || token.refreshToken,
         expiresAt: Date.now() + newToken.expires_in * 1000,
       };
 
@@ -153,7 +166,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!hasSpotify) {
       setPlaylists([]);
       setLikedSongsCount(0);
-      setFetchError(null);
       return;
     }
 
@@ -192,7 +204,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
       }
     } catch (err) {
-      setFetchError(err instanceof Error ? err.message : 'Failed to fetch playlists');
+      // Don't stomp the friendlier "session expired — reconnect" message if
+      // the reauth handler just set it (mid-session invalid_grant).
+      setFetchError((prev) =>
+        prev?.includes('session has expired')
+          ? prev
+          : err instanceof Error
+            ? err.message
+            : 'Failed to fetch playlists',
+      );
     }
   }, []);
 
@@ -315,6 +335,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     loadStoredAuth();
   }, [loadStoredAuth]);
+
+  // When the Spotify client discovers mid-session that the refresh token is
+  // permanently dead (invalid_grant — 6-month expiry or revoked), it clears
+  // storage itself and emits this event. Reset app state so the user sees
+  // the reconnect prompt instead of a half-broken session.
+  useEffect(() => {
+    const handleReauthRequired = () => {
+      setSpotify({
+        isAuthenticated: false,
+        user: null,
+        token: null,
+      });
+      setPlaylists([]);
+      setLikedSongsCount(0);
+      setNavidromePlaylists([]);
+      setFetchError('Your Spotify session has expired. Please reconnect Spotify.');
+    };
+    window.addEventListener('navispot:spotify-reauth-required', handleReauthRequired);
+    return () => window.removeEventListener('navispot:spotify-reauth-required', handleReauthRequired);
+  }, []);
 
   const spotifyLogin = useCallback(async () => {
     try {

@@ -65,6 +65,9 @@ export class SpotifyApiError extends Error {
 
 export class SpotifyClient {
   private token: SpotifyToken | null = null;
+  // In-flight refresh promise shared by concurrent callers (see
+  // refreshAccessToken) to avoid parallel token refresh requests.
+  private refreshInFlight: Promise<SpotifyToken | null> | null = null;
 
   setToken(token: SpotifyToken): void {
     this.token = token;
@@ -286,37 +289,80 @@ export class SpotifyClient {
   async refreshAccessToken(): Promise<SpotifyToken | null> {
     if (!this.token?.refreshToken) return null;
 
+    // Serialize concurrent refreshes: when multiple API calls notice an
+    // expired token at once (track fetches + background date fetches), they
+    // all share a single refresh request instead of firing N parallel ones.
+    if (this.refreshInFlight) {
+      return this.refreshInFlight;
+    }
+
+    this.refreshInFlight = this.doRefreshAccessToken().finally(() => {
+      this.refreshInFlight = null;
+    });
+    return this.refreshInFlight;
+  }
+
+  /**
+   * Emitted on window when the refresh token is permanently dead
+   * (Spotify returned invalid_grant — token expired after its 6-month
+   * lifetime or was revoked). Per Spotify docs the app must send the user
+   * through the authorization flow again; listeners should clear local
+   * state and prompt a reconnect.
+   */
+  private handleInvalidGrant(): void {
+    warn('Spotify refresh token is invalid (expired or revoked) — reauthorization required');
+    try {
+      localStorage.removeItem(SPOTIFY_STORAGE_KEY);
+    } catch {
+      // storage unavailable — nothing to clear
+    }
+    this.token = null;
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('navispot:spotify-reauth-required'));
+    }
+  }
+
+  private async doRefreshAccessToken(): Promise<SpotifyToken | null> {
+    // Transient failures (network, 5xx) get a couple of retries.
+    // invalid_grant is permanent and is NOT retried.
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
         const response = await fetch('/api/auth/refresh', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ refreshToken: this.token.refreshToken }),
+          body: JSON.stringify({ refreshToken: this.token?.refreshToken }),
         });
 
+        if (response.status === 400) {
+          const data = await response.json().catch(() => ({}));
+          if (data?.error === 'invalid_grant') {
+            this.handleInvalidGrant();
+            return null;
+          }
+          // Other 400s (e.g. invalid_request) are also permanent.
+          return null;
+        }
+
         if (!response.ok) {
-          if (response.status === 400) return null;
+          // 502/500 from our route — Spotify endpoint issue, transient.
           throw new Error(`Refresh failed: ${response.status}`);
         }
 
         const data = await response.json();
+        if (!this.token) return null;
+
+        // Spotify may rotate refresh tokens; keep the old one when the
+        // response does not include a new one (documented behavior).
         const newToken: SpotifyToken = {
           accessToken: data.access_token,
-          refreshToken: this.token.refreshToken,
+          refreshToken: data.refresh_token || this.token.refreshToken,
           expiresAt: Date.now() + data.expires_in * 1000,
           tokenType: data.token_type,
           scope: data.scope,
         };
 
         this.setToken(newToken);
-        
-        const stored = localStorage.getItem(SPOTIFY_STORAGE_KEY);
-        if (stored) {
-          const parsed = JSON.parse(stored);
-          parsed.token = newToken;
-          localStorage.setItem(SPOTIFY_STORAGE_KEY, JSON.stringify(parsed));
-        }
-        
+        this.persistToken(newToken);
         return newToken;
       } catch {
         if (attempt < 2) {
@@ -325,6 +371,19 @@ export class SpotifyClient {
       }
     }
     return null;
+  }
+
+  private persistToken(token: SpotifyToken): void {
+    try {
+      const stored = localStorage.getItem(SPOTIFY_STORAGE_KEY);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        parsed.token = token;
+        localStorage.setItem(SPOTIFY_STORAGE_KEY, JSON.stringify(parsed));
+      }
+    } catch {
+      // storage unavailable — token still lives in memory for this session
+    }
   }
 
   private async fetch(endpoint: string, signal?: AbortSignal, options: RequestInit = {}, bypassCache: boolean = false): Promise<Response> {
@@ -364,10 +423,20 @@ export class SpotifyClient {
 
       if (response.status === 401) {
         const refreshed = await this.refreshAccessToken();
-        if (refreshed) {
-          return this.fetch(endpoint, signal, options, bypassCache);
+        if (refreshed && this.token) {
+          if (attempt > 0) {
+            // Already retried after a refresh and Spotify still says 401 —
+            // don't loop forever on a rejected token.
+            throw new Error('Token rejected by Spotify after refresh');
+          }
+          // Retry once with the fresh token.
+          fetchOptions.headers = {
+            ...fetchOptions.headers,
+            Authorization: `Bearer ${this.token.accessToken}`,
+          };
+          continue;
         }
-        throw new Error('Token expired and refresh failed');
+        throw new Error('Token expired and refresh failed — reconnect Spotify');
       }
 
       if (response.status === 429) {
