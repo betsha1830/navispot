@@ -34,7 +34,7 @@ export interface AuthContextType {
   likedSongsCount: number;
   fetchError: string | null;
   refreshing: boolean;
-  refreshData: () => Promise<void>;
+  refreshData: () => Promise<SpotifyPlaylist[] | null>;
 }
 
 export const SPOTIFY_STORAGE_KEY = 'navispot_spotify_auth';

@@ -160,13 +160,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  const fetchInitialData = useCallback(async (spotifyState: SpotifyAuthState, navidromeState: NavidromeAuthState) => {
+  const fetchInitialData = useCallback(async (spotifyState: SpotifyAuthState, navidromeState: NavidromeAuthState): Promise<SpotifyPlaylist[] | null> => {
     const hasSpotify = spotifyState.isAuthenticated && !!spotifyState.token;
 
     if (!hasSpotify) {
       setPlaylists([]);
       setLikedSongsCount(0);
-      return;
+      return null;
     }
 
     setFetchError(null);
@@ -203,6 +203,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           console.warn('Failed to fetch Navidrome playlists:', navErr);
         }
       }
+
+      return fetchedPlaylists;
     } catch (err) {
       // Don't stomp the friendlier "session expired — reconnect" message if
       // the reauth handler just set it (mid-session invalid_grant).
@@ -213,14 +215,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             ? err.message
             : 'Failed to fetch playlists',
       );
+      return null;
     }
   }, []);
 
-  const refreshData = useCallback(async () => {
-    if (!spotify.isAuthenticated || !spotify.token) return;
+  const refreshData = useCallback(async (): Promise<SpotifyPlaylist[] | null> => {
+    if (!spotify.isAuthenticated || !spotify.token) return null;
     setRefreshing(true);
     try {
-      await fetchInitialData(spotify, navidrome);
+      return await fetchInitialData(spotify, navidrome);
     } finally {
       setRefreshing(false);
     }

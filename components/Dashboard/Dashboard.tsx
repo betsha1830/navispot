@@ -281,13 +281,19 @@ export function Dashboard() {
     const oldTrackCounts = new Map(playlists.map(p => [p.id, p.items.total]))
     const oldSnapshots = new Map(playlists.map(p => [p.id, p.snapshot_id]))
 
+    let freshPlaylists: SpotifyPlaylist[] | null = null
     try {
-      await refreshData()
+      // refreshData returns the freshly fetched playlists so changed-
+      // detection compares fresh-vs-old instead of the stale closure
+      // copy (which made the comparison a no-op and never invalidated
+      // the track cache).
+      freshPlaylists = await refreshData()
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to refresh playlists")
     }
 
-    const changedPlaylistIds = playlists
+    const sourcePlaylists = freshPlaylists ?? playlists
+    const changedPlaylistIds = sourcePlaylists
       .filter(p => oldSnapshots.has(p.id))
       .filter(p => {
         const trackCountChanged = oldTrackCounts.get(p.id) !== p.items.total
@@ -979,7 +985,16 @@ export function Dashboard() {
 
       for (let i = 0; i < itemsToExport.length; i++) {
         const item = itemsToExport[i]
-        const itemSnapshotId = "snapshot_id" in item ? (item.snapshot_id || "") : ""
+        // Owned playlists expose snapshot_id; imported public playlists
+        // expose sourceRevision (the same Spotify snapshot). Using it for
+        // imports keeps the "unchanged → skip" check honest; falling back
+        // to "" would compare "" === "" and wrongly skip changed imports.
+        const itemSnapshotId =
+          "snapshot_id" in item
+            ? item.snapshot_id || ""
+            : "isImported" in item && item.isImported
+              ? item.sourceRevision || ""
+              : ""
         let progress = createInitialProgressState(0)
         setProgressState(progress)
 
@@ -1030,7 +1045,53 @@ export function Dashboard() {
           tracks = item.tracks
           isLikedSongs = false
           cachedData = loadPlaylistExportData(item.id)
-          useDifferentialMatching = false
+
+          // Imported playlists follow the same linking rules as owned ones:
+          // if a Navidrome playlist already references this Spotify ID (in
+          // its comment), re-export UPDATES it instead of creating a
+          // duplicate on every run.
+          let serverLinkedId: string | undefined
+          if (!cachedData?.navidromePlaylistId && !forceExportPlaylists) {
+            const serverPlaylist = await navidromeClient.getPlaylistByComment(item.id)
+            if (serverPlaylist) {
+              serverLinkedId = serverPlaylist.id
+              const serverMetadata = parseExportMetadata(serverPlaylist.comment)
+              cachedData = cachedData
+                ? { ...cachedData, navidromePlaylistId: serverPlaylist.id }
+                : {
+                    spotifyPlaylistId: item.id,
+                    spotifySnapshotId: serverMetadata?.spotifySnapshotId ?? '',
+                    playlistName: item.name,
+                    navidromePlaylistId: serverPlaylist.id,
+                    exportedAt: serverMetadata?.exportedAt ?? new Date().toISOString(),
+                    trackCount: serverMetadata?.trackCount ?? 0,
+                    tracks: {},
+                    statistics: { total: 0, matched: 0, unmatched: 0, ambiguous: 0 },
+                  }
+            }
+          }
+
+          existingNavidromeId = cachedData?.navidromePlaylistId ?? serverLinkedId
+
+          // With a full per-track cache, match differentially against it
+          // (cheap). With only a server-side link (no per-track cache),
+          // run a full match pass — but still against the EXISTING
+          // Navidrome playlist (update mode diffs server-side), never a
+          // duplicate create.
+          useDifferentialMatching =
+            !forceExportPlaylists &&
+            !!cachedData?.navidromePlaylistId &&
+            Object.keys(cachedData.tracks).length > 0
+
+          // Imported playlists change when the source snapshot changes —
+          // same up-to-date check as owned playlists. Only trust it when
+          // we have a per-track cache to compare against.
+          upToDate =
+            !forceExportPlaylists &&
+            !!cachedData?.navidromePlaylistId &&
+            Object.keys(cachedData.tracks).length > 0
+              ? isPlaylistUpToDate(cachedData, itemSnapshotId)
+              : false
         } else {
           tracks = (await spotifyClient.getAllPlaylistTracks(item.id, signal)).map(
             (t) => t.track,
@@ -1459,13 +1520,16 @@ export function Dashboard() {
           }
         } else {
           const forceCreate = forceExportPlaylists
+          // Update the linked Navidrome playlist when one exists (either
+          // from the local cache or discovered via the playlist comment) —
+          // imported playlists included. Only a deliberate re-create (or
+          // no existing link) falls back to create mode.
+          const shouldUpdate =
+            !forceCreate && !!existingNavidromeId && !upToDate
           const exporterOptions: PlaylistExporterOptions = {
-            mode:
-              !forceCreate && useDifferentialMatching && cachedData?.navidromePlaylistId
-                ? "update"
-                : "create",
+            mode: shouldUpdate ? "update" : "create",
             existingPlaylistId:
-              !forceCreate ? cachedData?.navidromePlaylistId : undefined,
+              !forceCreate && shouldUpdate ? existingNavidromeId : undefined,
             skipUnmatched: false,
             isPublic: exportPlaylistsAsPublic,
             cachedData:
