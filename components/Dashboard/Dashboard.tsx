@@ -55,6 +55,7 @@ import {
   getAllExportData,
   isPlaylistUpToDate,
   deletePlaylistExportData,
+  clearExpiredCache,
   type PlaylistExportData,
   type PlaylistExportDataV2,
   type TrackExportStatus,
@@ -63,7 +64,7 @@ import { PlaylistTableItem, PlaylistInfo } from "@/types/playlist-table"
 import { TrackMatch } from "@/types/matching"
 import { ImportedPlaylist } from "@/types/public-playlist"
 import { useToast } from "@/components/Toast"
-import { getJSON, setJSON } from "@/lib/storage"
+import { getJSON, setJSONWithQuotaFallback } from "@/lib/storage"
 import { trackKey as getTrackKey } from "@/lib/spotify/track-identity"
 import Image from "next/image"
 import NavispotLogo from "@/public/navispot.png"
@@ -184,8 +185,27 @@ export function Dashboard() {
   const tracksFetchInFlightRef = useRef<Set<string>>(new Set())
 
   useEffect(() => {
-    setJSON(IMPORTED_STORAGE_KEY, importedPlaylists)
-  }, [importedPlaylists])
+    // Imported playlists hold full track objects and can exceed the ~5MB
+    // localStorage quota; when that happens, drop the oldest imports from
+    // what gets persisted rather than silently losing everything on the
+    // next reload.
+    const dropped = setJSONWithQuotaFallback(IMPORTED_STORAGE_KEY, importedPlaylists, {
+      timestampField: "importedAt",
+    })
+    if (dropped > 0) {
+      toast.showWarning(
+        `Browser storage was full — the ${dropped} oldest imported ${
+          dropped === 1 ? "playlist" : "playlists"
+        } won't be saved for next time. They can be re-imported anytime.`,
+      )
+    } else if (dropped < 0) {
+      // Even trimming to nothing couldn't make room — surface it in the
+      // console at least, so support requests have a trace.
+      console.error(
+        "[navispot] Could not persist imported playlists: browser storage is full.",
+      )
+    }
+  }, [importedPlaylists, toast])
 
   const handlePlaylistImported = useCallback((playlist: ImportedPlaylist) => {
     setImportedPlaylists((prev) => {
@@ -336,10 +356,15 @@ export function Dashboard() {
   }
 
   useEffect(() => {
-    if (!spotify.isAuthenticated) return
+    // Sweep expired export caches (90-day retention) before loading —
+    // without this the cache grows unbounded across sessions until it
+    // hits the localStorage quota. Runs regardless of Spotify auth:
+    // imported public playlists can be exported without logging in, so
+    // skipSpotify users accumulate export caches too.
+    clearExpiredCache()
     const allData = getAllExportData()
     setTrackExportCache(allData)
-  }, [spotify.isAuthenticated])
+  }, [])
 
   useEffect(() => {
     const playlistItems: PlaylistTableItem[] = playlists.map((playlist) => {

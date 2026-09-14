@@ -5,6 +5,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from "react"
@@ -118,14 +119,22 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     [],
   )
 
-  const value: ToastContextType = {
-    showToast,
-    showSuccess: (msg, dur) => showToast("success", msg, dur),
-    showError: (msg, dur) => showToast("error", msg, dur),
-    showInfo: (msg, dur) => showToast("info", msg, dur),
-    showWarning: (msg, dur) => showToast("warning", msg, dur),
-    dismiss,
-  }
+  // Memoize the context value: an unmemoized object (with fresh arrow
+  // functions) changes identity on every provider render, which re-triggers
+  // any effect with `toast` in its deps whenever a toast appears or
+  // disappears — including an infinite write→toast→rerender loop in the
+  // quota-fallback persistence path.
+  const value = useMemo<ToastContextType>(
+    () => ({
+      showToast,
+      showSuccess: (msg, dur) => showToast("success", msg, dur),
+      showError: (msg, dur) => showToast("error", msg, dur),
+      showInfo: (msg, dur) => showToast("info", msg, dur),
+      showWarning: (msg, dur) => showToast("warning", msg, dur),
+      dismiss,
+    }),
+    [showToast, dismiss],
+  )
 
   return (
     <ToastContext.Provider value={value}>
