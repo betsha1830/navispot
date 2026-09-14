@@ -46,6 +46,7 @@ export function AuthErrorBanner() {
     const params = new URLSearchParams(window.location.search)
     const code = params.get("error")
     if (code) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time mount read of an external system (the URL); cannot run during render because this component is SSR'd
       setOauthError(messageFor(code))
       // Strip the param so a page refresh doesn't re-show the banner.
       params.delete("error")

@@ -120,7 +120,7 @@ function DatePicker({
       </div>,
       document.body
     )
-  }, [isOpen, calendarPosition.ready, calendarPosition.top, calendarPosition.left, date])
+  }, [isOpen, calendarPosition.ready, calendarPosition.top, calendarPosition.left, date, handleSelect])
 
   return (
     <div ref={pickerRef} className={`relative ${className}`}>
@@ -331,9 +331,6 @@ export function PlaylistTable({
       let position: "above" | "below" = "below"
       if (spaceBelow < popoverHeight && spaceAbove > spaceBelow) {
         position = "above"
-        setPopoverPosition("above")
-      } else {
-        setPopoverPosition("below")
       }
 
       // Calculate vertical position
@@ -347,7 +344,7 @@ export function PlaylistTable({
         // If we can't fit above, force below
         if (position === "above") {
           top = buttonRect.bottom + 8
-          setPopoverPosition("below")
+          position = "below"
         }
       }
 
@@ -364,6 +361,11 @@ export function PlaylistTable({
         left = window.innerWidth - popoverWidth - 8
       }
 
+      // Single state update at the end: both position and style come from
+      // the same geometry pass (avoids cascading setState calls in the effect).
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- popover geometry must be read from the DOM after open, before paint
+      setPopoverPosition(position)
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- see above
       setPopoverStyle({ top, left, isReady: true })
     }
   }, [showFilters])

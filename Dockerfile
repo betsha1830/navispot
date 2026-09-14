@@ -1,8 +1,10 @@
 # Base image
 FROM node:20-alpine AS base
 
-# Install pnpm
-RUN npm install -g pnpm
+# Install pnpm. Pinned to match CI (.github/workflows/ci.yml) and avoid
+# behavior changes in future majors (pnpm 12 fails the frozen-lockfile
+# install over ignored build scripts).
+RUN npm install -g pnpm@10
 
 # Install dependencies only when needed
 FROM base AS deps
