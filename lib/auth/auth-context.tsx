@@ -402,37 +402,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  const refreshSpotifyToken = useCallback(async (): Promise<boolean> => {
-    try {
-      const stored = localStorage.getItem(SPOTIFY_STORAGE_KEY);
-      if (!stored) return false;
-
-      const parsed = JSON.parse(stored) as { token: SpotifyToken };
-      if (!parsed.token?.refreshToken) return false;
-
-      const response = await fetch('/api/auth/refresh', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ refreshToken: parsed.token.refreshToken }),
-      });
-
-      if (!response.ok) return false;
-
-      const newToken = await response.json();
-      const updatedToken: SpotifyToken = {
-        ...parsed.token,
-        accessToken: newToken.access_token,
-        expiresAt: Date.now() + newToken.expires_in * 1000,
-      };
-
-      localStorage.setItem(SPOTIFY_STORAGE_KEY, JSON.stringify({ token: updatedToken, user: spotify.user }));
-      setSpotify((prev) => ({ ...prev, token: updatedToken }));
-      return true;
-    } catch (error) {
-      console.error('Error refreshing Spotify token:', error);
-      return false;
-    }
-  }, [spotify.user]);
+  // NOTE: `refreshSpotifyToken` (a context method that POSTed /api/auth/refresh
+  // directly) was removed — it had zero callers and silently dropped rotated
+  // refresh tokens. Token refresh now flows exclusively through
+  // SpotifyClient.refreshAccessToken (serialized, invalid_grant-aware).
 
   const setNavidromeCredentials = useCallback(async (credentials: NavidromeCredentials): Promise<boolean> => {
     setNavidrome((prev) => ({ ...prev, error: null, credentials }));
@@ -535,7 +508,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     navidrome,
     spotifyLogin,
     spotifyLogout,
-    refreshSpotifyToken,
     setNavidromeCredentials,
     testNavidromeConnection,
     clearNavidromeCredentials,

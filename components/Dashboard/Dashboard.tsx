@@ -5,7 +5,6 @@ import { useAuth } from "@/lib/auth/auth-context"
 import { spotifyClient } from "@/lib/spotify/client"
 import { NavidromeApiClient, parseExportMetadata } from "@/lib/navidrome/client"
 import { SpotifyPlaylist, SpotifyTrack } from "@/types/spotify"
-import { NavidromePlaylist } from "@/types/navidrome"
 import { PlaylistTable } from "@/components/Dashboard/PlaylistTable"
 import { ExportLayoutManager } from "@/components/Dashboard/ExportLayoutManager"
 import { error as logError } from "@/lib/support/debug-log"
@@ -18,7 +17,6 @@ import {
   SelectedPlaylist,
 } from "@/components/Dashboard/SelectedPlaylistsPanel"
 import {
-  UnmatchedSongsPanel,
   UnmatchedSong,
 } from "@/components/Dashboard/UnmatchedSongsPanel"
 import {
@@ -206,13 +204,6 @@ export function Dashboard() {
       )
     }
   }, [importedPlaylists, toast])
-
-  const handlePlaylistImported = useCallback((playlist: ImportedPlaylist) => {
-    setImportedPlaylists((prev) => {
-      const filtered = prev.filter((p) => p.id !== playlist.id)
-      return [...filtered, playlist]
-    })
-  }, [])
 
   const [importingUrl, setImportingUrl] = useState(false)
 

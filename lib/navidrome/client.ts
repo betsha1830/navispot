@@ -21,17 +21,6 @@ export function generateAuthHeader(username: string, password: string): string {
   return `Basic ${encoded}`;
 }
 
-export function normalizeSearchQuery(query: string): string {
-  return query
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[''`´']/g, '')  // Remove various apostrophe characters
-    .replace(/[^a-z0-9\s]/g, ' ')  // Replace special chars with spaces
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
 export function parseExportMetadata(comment: string | undefined): ExportMetadata | null {
   if (!comment || comment.trim() === '') {
     return null;

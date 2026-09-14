@@ -256,36 +256,6 @@ export class SpotifyClient {
     return earliest;
   }
 
-  /**
-   * Fetches the created date (earliest added_at) for multiple playlists.
-   * Processes playlists sequentially to respect rate limits.
-   * Returns a Map of playlistId → earliest ISO date string.
-   */
-  async getPlaylistCreatedDates(
-    playlistIds: string[],
-    signal?: AbortSignal,
-    onProgress?: (completed: number, total: number) => void,
-  ): Promise<Map<string, string>> {
-    const result = new Map<string, string>();
-
-    for (let i = 0; i < playlistIds.length; i++) {
-      if (signal?.aborted) break;
-
-      try {
-        const createdDate = await this.getPlaylistCreatedDate(playlistIds[i], signal);
-        if (createdDate) {
-          result.set(playlistIds[i], createdDate);
-        }
-      } catch {
-        // Skip playlists that fail (e.g., deleted or access revoked)
-      }
-
-      onProgress?.(i + 1, playlistIds.length);
-    }
-
-    return result;
-  }
-
   async refreshAccessToken(): Promise<SpotifyToken | null> {
     if (!this.token?.refreshToken) return null;
 
@@ -316,7 +286,7 @@ export class SpotifyClient {
     } catch {
       // storage unavailable — nothing to clear
     }
-    this.token = null;
+    this.clearToken();
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('navispot:spotify-reauth-required'));
     }
