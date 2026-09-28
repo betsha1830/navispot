@@ -17,6 +17,11 @@ export interface NavidromeAuthState {
   clientId: string | null;
 }
 
+export interface FreshData {
+  playlists: SpotifyPlaylist[];
+  likedSongsCount: number;
+}
+
 export interface AuthContextType {
   spotify: SpotifyAuthState;
   navidrome: NavidromeAuthState;
@@ -33,7 +38,7 @@ export interface AuthContextType {
   likedSongsCount: number;
   fetchError: string | null;
   refreshing: boolean;
-  refreshData: () => Promise<SpotifyPlaylist[] | null>;
+  refreshData: () => Promise<FreshData | null>;
 }
 
 export const SPOTIFY_STORAGE_KEY = 'navispot_spotify_auth';

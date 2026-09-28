@@ -74,6 +74,26 @@ describe('SpotifyClient playlist endpoint uses non-deprecated /items', () => {
     }
   });
 
+  it('getPlaylistTracks with bypassCache adds _t param and sets cache: no-store', async () => {
+    fetchSpy.mockResolvedValue(jsonResponse({ items: [], next: null, total: 0 }));
+
+    await client.getPlaylistTracks('playlist-123', 50, 0, undefined, true);
+
+    const url = fetchSpy.mock.calls[0][0] as string;
+    expect(url).toContain('_t=');
+    expect(fetchSpy.mock.calls[0][1]?.cache).toBe('no-store');
+  });
+
+  it('getPlaylistTracks without bypassCache omits _t and leaves cache default', async () => {
+    fetchSpy.mockResolvedValue(jsonResponse({ items: [], next: null, total: 0 }));
+
+    await client.getPlaylistTracks('playlist-123', 50, 0);
+
+    const url = fetchSpy.mock.calls[0][0] as string;
+    expect(url).not.toContain('_t=');
+    expect(fetchSpy.mock.calls[0][1]?.cache).toBeUndefined();
+  });
+
   it('getPlaylistCreatedDate uses /items for both first and last page', async () => {
     fetchSpy
       .mockResolvedValueOnce(jsonResponse({

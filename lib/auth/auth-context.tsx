@@ -1,7 +1,7 @@
 'use client';
 
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
-import { AuthContextType, SpotifyAuthState, NavidromeAuthState, SPOTIFY_STORAGE_KEY, NAVIDROME_STORAGE_KEY, SKIP_SPOTIFY_STORAGE_KEY } from '@/types/auth-context';
+import { AuthContextType, FreshData, SpotifyAuthState, NavidromeAuthState, SPOTIFY_STORAGE_KEY, NAVIDROME_STORAGE_KEY, SKIP_SPOTIFY_STORAGE_KEY } from '@/types/auth-context';
 import { SpotifyToken, SpotifyUser } from '@/types/spotify-auth';
 import { SpotifyPlaylist } from '@/types/spotify';
 import { NavidromePlaylist, NavidromeCredentials } from '@/types/navidrome';
@@ -160,7 +160,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  const fetchInitialData = useCallback(async (spotifyState: SpotifyAuthState, navidromeState: NavidromeAuthState): Promise<SpotifyPlaylist[] | null> => {
+  const fetchInitialData = useCallback(async (spotifyState: SpotifyAuthState, navidromeState: NavidromeAuthState): Promise<FreshData | null> => {
     const hasSpotify = spotifyState.isAuthenticated && !!spotifyState.token;
 
     if (!hasSpotify) {
@@ -176,12 +176,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const fetchedPlaylists = await spotifyClient.getAllPlaylists();
       setPlaylists(fetchedPlaylists);
 
+      let freshLikedCount = 0;
       try {
-        const count = await spotifyClient.getSavedTracksCount();
-        setLikedSongsCount(count);
+        freshLikedCount = await spotifyClient.getSavedTracksCount();
       } catch {
-        setLikedSongsCount(0);
+        freshLikedCount = 0;
       }
+      setLikedSongsCount(freshLikedCount);
 
       if (
         navidromeState.isConnected &&
@@ -204,7 +205,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
       }
 
-      return fetchedPlaylists;
+      return { playlists: fetchedPlaylists, likedSongsCount: freshLikedCount };
     } catch (err) {
       // Don't stomp the friendlier "session expired — reconnect" message if
       // the reauth handler just set it (mid-session invalid_grant).
@@ -219,7 +220,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  const refreshData = useCallback(async (): Promise<SpotifyPlaylist[] | null> => {
+  const refreshData = useCallback(async (): Promise<FreshData | null> => {
     if (!spotify.isAuthenticated || !spotify.token) return null;
     setRefreshing(true);
     try {

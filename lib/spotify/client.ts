@@ -93,10 +93,13 @@ export class SpotifyClient {
     return response.json();
   }
 
-  async getPlaylistTracks(playlistId: string, limit: number = 50, offset: number = 0, signal?: AbortSignal): Promise<SpotifyTracksResponse> {
+  async getPlaylistTracks(playlistId: string, limit: number = 50, offset: number = 0, signal?: AbortSignal, bypassCache: boolean = false): Promise<SpotifyTracksResponse> {
     await spotifyRateLimiter.acquire();
     const params = new URLSearchParams({ limit: limit.toString(), offset: offset.toString() });
-    const response = await this.fetch(`/playlists/${playlistId}/items?${params.toString()}`, signal);
+    if (bypassCache) {
+      params.append('_t', Date.now().toString());
+    }
+    const response = await this.fetch(`/playlists/${playlistId}/items?${params.toString()}`, signal, {}, bypassCache);
     const data: SpotifyTracksResponse = await response.json();
     if (!Array.isArray(data.items)) {
       data.items = [];
@@ -117,13 +120,13 @@ export class SpotifyClient {
     return data;
   }
 
-  async getAllPlaylistTracks(playlistId: string, signal?: AbortSignal): Promise<SpotifyPlaylistTrack[]> {
+  async getAllPlaylistTracks(playlistId: string, signal?: AbortSignal, bypassCache: boolean = false): Promise<SpotifyPlaylistTrack[]> {
     const allTracks: SpotifyPlaylistTrack[] = [];
     let offset = 0;
     const limit = 50;
 
     while (true) {
-      const response = await this.getPlaylistTracks(playlistId, limit, offset, signal);
+      const response = await this.getPlaylistTracks(playlistId, limit, offset, signal, bypassCache);
       if (!Array.isArray(response.items) || response.items.length === 0) {
         break;
       }
@@ -154,13 +157,13 @@ export class SpotifyClient {
     return response.json();
   }
 
-  async getAllSavedTracks(signal?: AbortSignal): Promise<SpotifySavedTrack[]> {
+  async getAllSavedTracks(signal?: AbortSignal, bypassCache: boolean = false): Promise<SpotifySavedTrack[]> {
     const allTracks: SpotifySavedTrack[] = [];
     let offset = 0;
     const limit = 50;
 
     while (true) {
-      const response = await this.getSavedTracks(limit, offset, signal);
+      const response = await this.getSavedTracks(limit, offset, signal, bypassCache);
       if (!Array.isArray(response.items) || response.items.length === 0) {
         break;
       }

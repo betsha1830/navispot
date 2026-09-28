@@ -64,6 +64,8 @@ import { ImportedPlaylist } from "@/types/public-playlist"
 import { useToast } from "@/components/Toast"
 import { getJSON, setJSONWithQuotaFallback } from "@/lib/storage"
 import { trackKey as getTrackKey } from "@/lib/spotify/track-identity"
+import { getChangedPlaylistIds } from "@/lib/dashboard/refresh-change-detection"
+import type { FreshData } from "@/types/auth-context"
 import Image from "next/image"
 import NavispotLogo from "@/public/navispot.png"
 
@@ -181,6 +183,9 @@ export function Dashboard() {
   // Tracks playlist ids whose tracks are currently being fetched. Lives in a
   // ref (not state) so the fetch effect doesn't re-fire on every setState.
   const tracksFetchInFlightRef = useRef<Set<string>>(new Set())
+  // Ids whose next track fetch must bypass the HTTP cache. Set by the
+  // refresh handler when it invalidates them; consumed by the fetch effect.
+  const bypassCacheOnceRef = useRef<Set<string>>(new Set())
 
   useEffect(() => {
     // Imported playlists hold full track objects and can exceed the ~5MB
@@ -291,29 +296,34 @@ export function Dashboard() {
 
     const oldTrackCounts = new Map(playlists.map(p => [p.id, p.items.total]))
     const oldSnapshots = new Map(playlists.map(p => [p.id, p.snapshot_id]))
+    const oldLikedSongsCount = likedSongsCount
 
-    let freshPlaylists: SpotifyPlaylist[] | null = null
+    let fresh: FreshData | null = null
     try {
-      // refreshData returns the freshly fetched playlists so changed-
-      // detection compares fresh-vs-old instead of the stale closure
-      // copy (which made the comparison a no-op and never invalidated
-      // the track cache).
-      freshPlaylists = await refreshData()
+      // refreshData returns the freshly fetched playlists + liked count so
+      // changed-detection compares fresh-vs-old instead of the stale
+      // closure copy (which made the comparison a no-op and never
+      // invalidated the track cache).
+      fresh = await refreshData()
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to refresh playlists")
     }
 
-    const sourcePlaylists = freshPlaylists ?? playlists
-    const changedPlaylistIds = sourcePlaylists
-      .filter(p => oldSnapshots.has(p.id))
-      .filter(p => {
-        const trackCountChanged = oldTrackCounts.get(p.id) !== p.items.total
-        const snapshotChanged = oldSnapshots.get(p.id) !== p.snapshot_id
-        return trackCountChanged || snapshotChanged
-      })
-      .map(p => p.id)
+    // Refresh failed — there is nothing fresh to compare against, so skip
+    // invalidation entirely (old-vs-old comparison was a silent no-op).
+    if (!fresh) return
+
+    const changedPlaylistIds = getChangedPlaylistIds({
+      sourcePlaylists: fresh.playlists,
+      oldTrackCounts,
+      oldSnapshots,
+      oldLikedSongsCount,
+      freshLikedSongsCount: fresh.likedSongsCount,
+      likedSongsId: LIKED_SONGS_ID,
+    })
 
     if (changedPlaylistIds.length > 0) {
+      changedPlaylistIds.forEach(id => bypassCacheOnceRef.current.add(id))
       setPlaylistTracksCache(prev => {
         const newCache = new Map(prev)
         changedPlaylistIds.forEach(id => newCache.delete(id))
@@ -641,45 +651,50 @@ export function Dashboard() {
     }
   }, [selectedIds, playlists, importedPlaylists, isExporting, trackExportCache, likedSongsCount])
 
-  // Fetch tracks for checked playlists
   // Fetch tracks for checked Spotify-owned playlists that aren't cached.
   // Imported playlists already have their tracks in memory (importedPlaylists),
   // so we skip them here and source directly in playlistGroups below.
   useEffect(() => {
-    let cancelled = false
+    if (!spotify.token) return
+
+    const importedIds = new Set(importedPlaylists.map((p) => p.id))
+    const uncachedIds = Array.from(checkedPlaylistIds).filter(
+      (id) =>
+        !playlistTracksCache.has(id) &&
+        !importedIds.has(id) &&
+        !tracksFetchInFlightRef.current.has(id),
+    )
+    if (uncachedIds.length === 0) return
+
+    // Mark in-flight in the ref BEFORE any await, so re-entrant effect runs
+    // see these ids as already in flight and skip them.
+    uncachedIds.forEach((id) => tracksFetchInFlightRef.current.add(id))
+    setLoadingTracks(true)
+    setLoadingPlaylistIds(new Set(tracksFetchInFlightRef.current))
+
+    const bypassIds = uncachedIds.filter((id) => bypassCacheOnceRef.current.has(id))
+    const fetched = new Map<string, Song[]>()
 
     async function fetchTracks() {
-      if (!spotify.token) return
-
-      const importedIds = new Set(importedPlaylists.map((p) => p.id))
-      const uncachedIds = Array.from(checkedPlaylistIds).filter(
-        (id) =>
-          !playlistTracksCache.has(id) &&
-          !importedIds.has(id) &&
-          !tracksFetchInFlightRef.current.has(id),
-      )
-      if (uncachedIds.length === 0) return
-
-      // Mark in-flight in the ref BEFORE any await, so re-entrant effect runs
-      // see these ids as already in flight and skip them.
-      uncachedIds.forEach((id) => tracksFetchInFlightRef.current.add(id))
-      setLoadingTracks(true)
-      setLoadingPlaylistIds(new Set(tracksFetchInFlightRef.current))
-
       try {
-        spotifyClient.setToken(spotify.token)
-        const newCache = new Map(playlistTracksCache)
+        spotifyClient.setToken(spotify.token!)
 
         await Promise.all(
           uncachedIds.map(async (id) => {
-            if (cancelled) return
             try {
               let tracks
               if (id === LIKED_SONGS_ID) {
-                const savedTracks = await spotifyClient.getAllSavedTracks()
+                const savedTracks = await spotifyClient.getAllSavedTracks(
+                  undefined,
+                  bypassIds.includes(id),
+                )
                 tracks = savedTracks.map((t) => t.track)
               } else {
-                const playlistTracks = await spotifyClient.getAllPlaylistTracks(id)
+                const playlistTracks = await spotifyClient.getAllPlaylistTracks(
+                  id,
+                  undefined,
+                  bypassIds.includes(id),
+                )
                 tracks = playlistTracks.map((t) => t.track)
               }
 
@@ -691,34 +706,38 @@ export function Dashboard() {
                   track.artists?.map((a) => a.name).join(", ") || "Unknown",
                 duration: formatDuration(track.duration_ms),
               }))
-
-              newCache.set(id, songs)
+              fetched.set(id, songs)
             } catch (error) {
               console.error(`Failed to fetch tracks for playlist ${id}:`, error)
-              newCache.set(id, [])
+              fetched.set(id, [])
             } finally {
               tracksFetchInFlightRef.current.delete(id)
               setLoadingPlaylistIds(new Set(tracksFetchInFlightRef.current))
             }
           }),
         )
-
-        if (cancelled) return
-        setPlaylistTracksCache(newCache)
       } catch (error) {
         console.error("Failed to fetch tracks:", error)
       } finally {
-        setLoadingTracks(false)
-        if (!cancelled && tracksFetchInFlightRef.current.size === 0) {
+        bypassIds.forEach((id) => bypassCacheOnceRef.current.delete(id))
+        // Commit even if this run was superseded by a dependency change
+        // (e.g. setImportedPlaylists during refresh). Dropping the result
+        // used to strand the id — uncached, not in flight, and with no
+        // state change to re-trigger the effect — leaving the songs table
+        // stale until an unrelated update forced a re-run.
+        setPlaylistTracksCache((prev) => {
+          const next = new Map(prev)
+          fetched.forEach((songs, id) => next.set(id, songs))
+          return next
+        })
+        if (tracksFetchInFlightRef.current.size === 0) {
+          setLoadingTracks(false)
           setLoadingPlaylistIds(new Set())
         }
       }
     }
 
     fetchTracks()
-    return () => {
-      cancelled = true
-    }
   }, [checkedPlaylistIds, spotify.token, playlistTracksCache, importedPlaylists])
 
   useEffect(() => {
