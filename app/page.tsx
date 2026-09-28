@@ -8,7 +8,6 @@ import { SkipSpotifyButton } from "@/components/skip-spotify-button"
 import { NavidromeCredentialsForm } from "@/components/navidrome-credentials-form"
 import { ErrorBoundary } from "@/components/ErrorBoundary"
 import { LoadingScreen } from "@/components/LoadingScreen"
-import { AuthErrorBanner } from "@/components/AuthErrorBanner"
 import Image from "next/image"
 import NavispotLogo from "@/public/navispot.png"
 
@@ -77,7 +76,6 @@ export default function Home() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-zinc-50 px-4 py-12 dark:bg-black sm:px-6 lg:px-8">
       <main className="w-full max-w-md space-y-8">
-        <AuthErrorBanner />
         <div className="text-center">
           <div className="flex justify-center">
             <Image

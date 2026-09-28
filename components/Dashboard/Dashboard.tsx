@@ -117,7 +117,6 @@ export function Dashboard() {
     playlists,
     navidromePlaylists,
     likedSongsCount,
-    fetchError,
     refreshing,
     refreshData,
   } = useAuth()
@@ -127,7 +126,6 @@ export function Dashboard() {
     getJSON<ImportedPlaylist[]>(IMPORTED_STORAGE_KEY, []),
   )
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
-  const [error, setError] = useState<string | null>(null)
   const [progressState, setProgressState] = useState<ProgressState | null>(null)
 
   const [isExporting, setIsExporting] = useState(false)
@@ -292,8 +290,6 @@ export function Dashboard() {
   }, [importedPlaylists, toast])
 
   const handleRefreshPlaylists = async () => {
-    setError(null)
-
     const oldTrackCounts = new Map(playlists.map(p => [p.id, p.items.total]))
     const oldSnapshots = new Map(playlists.map(p => [p.id, p.snapshot_id]))
     const oldLikedSongsCount = likedSongsCount
@@ -306,7 +302,7 @@ export function Dashboard() {
       // invalidated the track cache).
       fresh = await refreshData()
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to refresh playlists")
+      toast.showError(err instanceof Error ? err.message : "Failed to refresh playlists")
     }
 
     // Refresh failed — there is nothing fresh to compare against, so skip
@@ -934,12 +930,12 @@ export function Dashboard() {
 
   const handleStartExport = async () => {
     if (!navidrome.credentials) {
-      setError("Please connect Navidrome to export playlists.")
+      toast.showWarning("Please connect Navidrome to export playlists.")
       return
     }
     const needsSpotify = selectedIds.has(LIKED_SONGS_ID) || playlists.some((p) => selectedIds.has(p.id))
     if (needsSpotify && (!spotify.isAuthenticated || !spotify.token)) {
-      setError("Please connect Spotify to export your own playlists.")
+      toast.showWarning("Please connect Spotify to export your own playlists.")
       return
     }
 
@@ -966,7 +962,6 @@ export function Dashboard() {
     isExportingRef.current = true
     setIsExporting(true)
     setShowConfirmation(false)
-    setError(null)
 
     const newCount = incrementExportCount()
     if (newCount >= 5 && shouldShowSupportBubble()) {
@@ -1727,7 +1722,6 @@ export function Dashboard() {
       if (err instanceof DOMException && err.name === 'AbortError') {
         toast.showWarning("Export was cancelled")
       } else {
-        setError(errorMessage)
         setProgressState({
           phase: "error",
           progress: { current: 0, total: 0, percent: 0 },
@@ -2029,39 +2023,8 @@ export function Dashboard() {
     />
   )
 
-  if (error) {
-    return (
-      <div className="flex min-h-[400px] items-center justify-center">
-        <p className="text-red-500">Error: {error}</p>
-      </div>
-    )
-  }
-
   return (
     <div>
-      {fetchError && (
-        <div
-          role="alert"
-          className="mb-4 flex flex-col gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 dark:border-red-900/50 dark:bg-red-950/40 sm:flex-row sm:items-center sm:justify-between"
-        >
-          <div className="flex items-start gap-2 text-sm text-red-700 dark:text-red-300">
-            <svg className="mt-0.5 h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden="true">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M5.07 19H19a2 2 0 001.73-3L13.73 4a2 2 0 00-3.46 0L3.34 16a2 2 0 001.73 3z" />
-            </svg>
-            <span>{fetchError}</span>
-          </div>
-          <div className="flex shrink-0 items-center gap-2">
-            <button
-              type="button"
-              onClick={() => refreshData()}
-              disabled={refreshing}
-              className="rounded-md border border-red-300 bg-white px-3 py-1.5 text-xs font-medium text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-red-800 dark:bg-transparent dark:text-red-300 dark:hover:bg-red-950/60"
-            >
-              {refreshing ? "Retrying…" : "Retry"}
-            </button>
-          </div>
-        </div>
-      )}
       <CancelConfirmationDialog
         isOpen={showCancelConfirmation}
         onClose={handleCloseCancelConfirmation}

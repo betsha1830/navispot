@@ -8,6 +8,12 @@ import { NavidromePlaylist, NavidromeCredentials } from '@/types/navidrome';
 import { NavidromeApiClient } from '@/lib/navidrome/client';
 import { spotifyClient } from '@/lib/spotify/client';
 import { getJSON, setJSON } from '@/lib/storage';
+import { notifySpotifySessionExpired } from '@/lib/auth/session-expired-toast';
+import {
+  consumeOAuthErrorFromUrl,
+  notifyOAuthError,
+  syncFetchErrorToast,
+} from '@/lib/auth/notification-toasts';
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
@@ -131,7 +137,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // back through the login flow instead of a dead session.
         localStorage.removeItem(SPOTIFY_STORAGE_KEY);
         setSpotify({ isAuthenticated: false, user: null, token: null });
-        setFetchError('Your Spotify session has expired. Please reconnect Spotify.');
+        notifySpotifySessionExpired();
         return false;
       }
 
@@ -207,14 +213,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       return { playlists: fetchedPlaylists, likedSongsCount: freshLikedCount };
     } catch (err) {
-      // Don't stomp the friendlier "session expired — reconnect" message if
-      // the reauth handler just set it (mid-session invalid_grant).
-      setFetchError((prev) =>
-        prev?.includes('session has expired')
-          ? prev
-          : err instanceof Error
-            ? err.message
-            : 'Failed to fetch playlists',
+      // Session expiry no longer flows through fetchError — it fires the
+      // dedicated session-expired toast instead (session-expired-toast.ts),
+      // so there is no friendlier message left to protect here.
+      setFetchError(
+        err instanceof Error ? err.message : 'Failed to fetch playlists',
       );
       return null;
     }
@@ -343,7 +346,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // When the Spotify client discovers mid-session that the refresh token is
   // permanently dead (invalid_grant — 6-month expiry or revoked), it clears
   // storage itself and emits this event. Reset app state so the user sees
-  // the reconnect prompt instead of a half-broken session.
+  // the reconnect prompt instead of a half-broken session; the session-
+  // expired toast carries the "Reconnect" action.
   useEffect(() => {
     const handleReauthRequired = () => {
       setSpotify({
@@ -354,11 +358,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setPlaylists([]);
       setLikedSongsCount(0);
       setNavidromePlaylists([]);
-      setFetchError('Your Spotify session has expired. Please reconnect Spotify.');
+      notifySpotifySessionExpired();
     };
     window.addEventListener('navispot:spotify-reauth-required', handleReauthRequired);
     return () => window.removeEventListener('navispot:spotify-reauth-required', handleReauthRequired);
   }, []);
+
+  // OAuth callback failures (/?error=<code>) surface once as a persistent
+  // toast; consumeOAuthErrorFromUrl strips the param so a refresh stays
+  // quiet. Replaces the old AuthErrorBanner.
+  useEffect(() => {
+    const code = consumeOAuthErrorFromUrl();
+    if (code) {
+      notifyOAuthError(code);
+    }
+  }, []);
+
+  // fetchError is the shared failure channel for the login and Dashboard
+  // screens — mirror it into one persistent toast with a Retry action; it
+  // dismisses itself when a retry clears the error. Replaces the old
+  // fetch-error banners.
+  useEffect(() => {
+    syncFetchErrorToast(fetchError, () => {
+      void refreshData();
+    });
+  }, [fetchError, refreshData]);
 
   const spotifyLogin = useCallback(async () => {
     try {
