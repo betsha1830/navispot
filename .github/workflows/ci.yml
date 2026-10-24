@@ -26,7 +26,7 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           cache: pnpm
 
       - name: Install dependencies
@@ -49,3 +49,72 @@ jobs:
           SPOTIFY_CLIENT_ID: ci-placeholder
           SPOTIFY_CLIENT_SECRET: ci-placeholder
           SPOTIFY_REDIRECT_URI: http://127.0.0.1:3000/api/auth/callback
+
+  security:
+    name: Dependency audit & secret scan
+    runs-on: ubuntu-latest
+
+    # Read-only job: the audit and the scan never need write access.
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Audit production dependencies
+        # Fails on any production critical/high advisory not in the accepted
+        # baseline below. pnpm's own exit code is deliberately ignored: it is
+        # non-zero whenever ANY advisory exists (the already-accepted highs
+        # trip it), so the report contents decide. A report that cannot even
+        # be parsed fails the step (fail-closed on pnpm/network errors).
+        # The four baseline highs are transitive dependencies of next; fixing
+        # them is tracked in docs/navispot-security-report.md (lockfile work,
+        # out of scope here).
+        run: |
+          tmp="$(mktemp)"
+          pnpm audit --prod --json >"$tmp" || true
+          if ! jq -e 'type == "object" and has("advisories")' "$tmp" >/dev/null; then
+            echo "::error::pnpm audit did not produce a usable report (fix the pnpm error above first)"
+            cat "$tmp"
+            exit 1
+          fi
+          new_advisories="$(jq -r '
+            [.advisories[]?
+              | select(.severity == "high" or .severity == "critical")
+              | .url | capture("(?<g>GHSA-[A-Za-z0-9-]+)").g]
+            - [
+                "GHSA-2v37-7h3g-55p8",  # nanoid <3.3.18, high, transitive via next
+                "GHSA-c83g-rgw3-j3cx",  # browserslist <=4.28.6, high, transitive via next
+                "GHSA-73wf-gq98-2v4g",  # browserslist <=4.28.6, high, transitive via next
+                "GHSA-68fv-2mgg-jv7q"   # source-map-js <1.2.2, high, transitive via next
+              ]
+            | join(", ")' "$tmp")"
+          if [ -n "$new_advisories" ]; then
+            echo "::error::Unaccepted critical/high advisories in production dependencies: $new_advisories"
+            echo "Fix them or move to the baseline in .github/workflows/ci.yml (rationale: docs/navispot-security-report.md)."
+            exit 1
+          fi
+
+      - name: Secret scan (tracked files)
+        # Scans tracked files only (not git history): catches credentials
+        # mistakenly committed where gitignored .env* files belong.
+        run: |
+          if findings="$(git ls-files -z | xargs -0 --no-run-if-empty grep -I -nEao -- '-----BEGIN [A-Z ]*PRIVATE KEY-----|sk_live_[0-9a-zA-Z]{20,}|AKIA[0-9A-Z]{16}|ASIA[0-9A-Z]{16}|GOOG[0-9A-Za-z_-]{28,}|(ENCRYPTION_KEY|SESSION_SECRET|SECRET_KEY|API_KEY)=[A-Za-z0-9+/=_-]{20,}')"; then
+            echo "::error::Secret-like content found in tracked files:"
+            echo "$findings"
+            exit 1
+          fi
