@@ -26,7 +26,7 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           cache: pnpm
 
       - name: Install dependencies
@@ -49,3 +49,114 @@ jobs:
           SPOTIFY_CLIENT_ID: ci-placeholder
           SPOTIFY_CLIENT_SECRET: ci-placeholder
           SPOTIFY_REDIRECT_URI: http://127.0.0.1:3000/api/auth/callback
+
+  security:
+    name: Dependency audit & secret scan
+    runs-on: ubuntu-latest
+
+    # Read-only job: the audit and the scan never need write access.
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Audit production dependencies
+        # Fails on any production critical/high advisory not in the accepted
+        # baseline below. pnpm's own exit code is deliberately ignored: it is
+        # non-zero whenever ANY advisory exists (the already-accepted highs
+        # trip it), so the report contents decide. A report that cannot even
+        # be parsed fails the step (fail-closed on pnpm/network errors).
+        # The four baseline highs are transitive dependencies of next; fixing
+        # them is tracked in docs/navispot-security-report.md (lockfile work,
+        # out of scope here).
+        run: |
+          tmp="$(mktemp)"
+          pnpm audit --prod --json >"$tmp" || true
+          if ! jq -e 'type == "object" and has("advisories")' "$tmp" >/dev/null; then
+            echo "::error::pnpm audit did not produce a usable report (fix the pnpm error above first)"
+            cat "$tmp"
+            exit 1
+          fi
+          # Baselines are severity-bound: a baselined GHSA reclassified as
+          # critical is NOT suppressed. Only highs are accepted.
+          # High baseline: transitive deps bundled by next; dropping them needs
+          # the lockfile refresh tracked in docs/navispot-security-report.md.
+          new_critical="$(jq -r '[.advisories[]? | select(.severity == "critical") | .url | capture("(?<g>GHSA-[A-Za-z0-9-]+)").g] | unique | join(", ")' "$tmp")"
+          new_high="$(jq -r '
+            def base: [
+                {ghsa: "GHSA-2v37-7h3g-55p8", pkg: "nanoid"},        # accepted: transitive via next
+                {ghsa: "GHSA-c83g-rgw3-j3cx", pkg: "browserslist"},  # accepted: transitive via next
+                {ghsa: "GHSA-73wf-gq98-2v4g", pkg: "browserslist"},  # accepted: transitive via next
+                {ghsa: "GHSA-68fv-2mgg-jv7q", pkg: "source-map-js"}  # accepted: transitive via next
+              ];
+            [.advisories[]?
+              | select(.severity == "high")
+              | {ghsa: (.url | capture("(?<g>GHSA-[A-Za-z0-9-]+)").g), pkg: .module_name}]
+            - base
+            | map(.ghsa) | unique | join(", ")' "$tmp")"
+          if [ -n "$new_critical$new_high" ]; then
+            [ -n "$new_critical" ] && echo "::error::Unaccepted CRITICAL advisories in production dependencies: $new_critical"
+            [ -n "$new_high" ] && echo "::error::Unaccepted high advisories in production dependencies: $new_high"
+            echo "Fix them or move to the baseline in .github/workflows/ci.yml (rationale: docs/navispot-security-report.md)."
+            exit 1
+          fi
+
+      - name: Secret scan (tracked files)
+        # Scans tracked files only (not git history): catches credentials
+        # mistakenly committed where gitignored .env* files belong.
+        # .env.example is scanned too, but its documented your_* placeholder
+        # values are masked first — a real credential committed there is still
+        # matched, while the file's own placeholder lines never trip.
+        # Matched values are never printed: a committed credential must not be
+        # copied into the workflow log (file paths and line numbers only).
+        # grep exit semantics: 0 = match, 1 = clean, >=2 = error. A read
+        # error fails the whole step (fail closed).
+        run: |
+          pattern='-----BEGIN [A-Z ]*PRIVATE KEY-----|sk_live_[0-9a-zA-Z]{20,}|AKIA[0-9A-Z]{16}|ASIA[0-9A-Z]{16}|GOOG[0-9A-Za-z_-]{28,}|(ENCRYPTION_KEY|SESSION_SECRET|SECRET_KEY|API_KEY|SPOTIFY_CLIENT_SECRET|NAVIDROME_PASSWORD)=[A-Za-z0-9+/=_-]{20,}'
+          # rc mirrors grep: 0 match / 1 clean / >=2 error
+          scan_file() {
+            if [ "$2" = ".env.example" ]; then
+              grep -qE -- "$1" <(sed -E 's/^(SPOTIFY_CLIENT_ID|SPOTIFY_CLIENT_SECRET|SPOTIFY_REDIRECT_URI|NEXT_PUBLIC_APP_URL)=your_[a-zA-Z_-]+/\1<masked_placeholder>/' "$2" 2>/dev/null) || return $?
+            else
+              grep -qE -- "$1" "$2" 2>/dev/null || return $?
+            fi
+          }
+          errored=0
+          found=0
+          while IFS= read -r -d '' f; do
+            rc=0
+            scan_file "$pattern" "$f" || rc=$?
+            if [ "$rc" -ge 2 ]; then
+              echo "::error::Secret scan could not read $f (grep status $rc)"
+              errored=1
+            elif [ "$rc" -eq 0 ]; then
+              found=1
+            fi
+          done < <(git ls-files -z -- .)
+          if [ "$errored" -eq 1 ]; then
+            exit 1
+          fi
+          if [ "$found" -eq 1 ]; then
+            echo "::error::Secret-like content found in tracked files:"
+            while IFS= read -r -d '' f; do
+              if scan_file "$pattern" "$f"; then
+                echo "$f"
+              fi
+            done < <(git ls-files -z -- .)
+            exit 1
+          fi

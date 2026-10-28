@@ -1,5 +1,5 @@
 # Base image
-FROM node:20-alpine AS base
+FROM node:24-alpine AS base
 
 # Install pnpm. Pinned to match CI (.github/workflows/ci.yml) and avoid
 # behavior changes in future majors (pnpm 12 fails the frozen-lockfile
