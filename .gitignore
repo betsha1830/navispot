@@ -45,3 +45,6 @@ opencode.json
 
 # taste
 .commandcode/taste/
+
+# agent workspace scratch (task ledgers, review packages)
+.superpowers/

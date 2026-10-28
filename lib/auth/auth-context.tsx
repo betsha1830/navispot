@@ -1,13 +1,19 @@
 'use client';
 
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
-import { AuthContextType, SpotifyAuthState, NavidromeAuthState, SPOTIFY_STORAGE_KEY, NAVIDROME_STORAGE_KEY, SKIP_SPOTIFY_STORAGE_KEY } from '@/types/auth-context';
+import { AuthContextType, FreshData, SpotifyAuthState, NavidromeAuthState, SPOTIFY_STORAGE_KEY, NAVIDROME_STORAGE_KEY, SKIP_SPOTIFY_STORAGE_KEY } from '@/types/auth-context';
 import { SpotifyToken, SpotifyUser } from '@/types/spotify-auth';
 import { SpotifyPlaylist } from '@/types/spotify';
 import { NavidromePlaylist, NavidromeCredentials } from '@/types/navidrome';
 import { NavidromeApiClient } from '@/lib/navidrome/client';
 import { spotifyClient } from '@/lib/spotify/client';
 import { getJSON, setJSON } from '@/lib/storage';
+import { notifySpotifySessionExpired } from '@/lib/auth/session-expired-toast';
+import {
+  consumeOAuthErrorFromUrl,
+  notifyOAuthError,
+  syncFetchErrorToast,
+} from '@/lib/auth/notification-toasts';
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
@@ -125,12 +131,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         body: JSON.stringify({ refreshToken: token.refreshToken }),
       });
 
+      if (response.status === 400) {
+        // invalid_grant / invalid_request — refresh token is permanently
+        // dead (6-month expiry or revoked). Clear it so the user is sent
+        // back through the login flow instead of a dead session.
+        localStorage.removeItem(SPOTIFY_STORAGE_KEY);
+        setSpotify({ isAuthenticated: false, user: null, token: null });
+        notifySpotifySessionExpired();
+        return false;
+      }
+
       if (!response.ok) return false;
 
       const newToken = await response.json();
       const updatedToken: SpotifyToken = {
         ...token,
         accessToken: newToken.access_token,
+        // Spotify may rotate refresh tokens; keep the old one when the
+        // response does not include a new one.
+        refreshToken: newToken.refresh_token || token.refreshToken,
         expiresAt: Date.now() + newToken.expires_in * 1000,
       };
 
@@ -147,14 +166,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  const fetchInitialData = useCallback(async (spotifyState: SpotifyAuthState, navidromeState: NavidromeAuthState) => {
+  const fetchInitialData = useCallback(async (spotifyState: SpotifyAuthState, navidromeState: NavidromeAuthState): Promise<FreshData | null> => {
     const hasSpotify = spotifyState.isAuthenticated && !!spotifyState.token;
 
     if (!hasSpotify) {
       setPlaylists([]);
       setLikedSongsCount(0);
-      setFetchError(null);
-      return;
+      return null;
     }
 
     setFetchError(null);
@@ -164,12 +182,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const fetchedPlaylists = await spotifyClient.getAllPlaylists();
       setPlaylists(fetchedPlaylists);
 
+      let freshLikedCount = 0;
       try {
-        const count = await spotifyClient.getSavedTracksCount();
-        setLikedSongsCount(count);
+        freshLikedCount = await spotifyClient.getSavedTracksCount();
       } catch {
-        setLikedSongsCount(0);
+        freshLikedCount = 0;
       }
+      setLikedSongsCount(freshLikedCount);
 
       if (
         navidromeState.isConnected &&
@@ -191,16 +210,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           console.warn('Failed to fetch Navidrome playlists:', navErr);
         }
       }
+
+      return { playlists: fetchedPlaylists, likedSongsCount: freshLikedCount };
     } catch (err) {
-      setFetchError(err instanceof Error ? err.message : 'Failed to fetch playlists');
+      // Session expiry no longer flows through fetchError — it fires the
+      // dedicated session-expired toast instead (session-expired-toast.ts),
+      // so there is no friendlier message left to protect here.
+      setFetchError(
+        err instanceof Error ? err.message : 'Failed to fetch playlists',
+      );
+      return null;
     }
   }, []);
 
-  const refreshData = useCallback(async () => {
-    if (!spotify.isAuthenticated || !spotify.token) return;
+  const refreshData = useCallback(async (): Promise<FreshData | null> => {
+    if (!spotify.isAuthenticated || !spotify.token) return null;
     setRefreshing(true);
     try {
-      await fetchInitialData(spotify, navidrome);
+      return await fetchInitialData(spotify, navidrome);
     } finally {
       setRefreshing(false);
     }
@@ -316,6 +343,47 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     loadStoredAuth();
   }, [loadStoredAuth]);
 
+  // When the Spotify client discovers mid-session that the refresh token is
+  // permanently dead (invalid_grant — 6-month expiry or revoked), it clears
+  // storage itself and emits this event. Reset app state so the user sees
+  // the reconnect prompt instead of a half-broken session; the session-
+  // expired toast carries the "Reconnect" action.
+  useEffect(() => {
+    const handleReauthRequired = () => {
+      setSpotify({
+        isAuthenticated: false,
+        user: null,
+        token: null,
+      });
+      setPlaylists([]);
+      setLikedSongsCount(0);
+      setNavidromePlaylists([]);
+      notifySpotifySessionExpired();
+    };
+    window.addEventListener('navispot:spotify-reauth-required', handleReauthRequired);
+    return () => window.removeEventListener('navispot:spotify-reauth-required', handleReauthRequired);
+  }, []);
+
+  // OAuth callback failures (/?error=<code>) surface once as a persistent
+  // toast; consumeOAuthErrorFromUrl strips the param so a refresh stays
+  // quiet. Replaces the old AuthErrorBanner.
+  useEffect(() => {
+    const code = consumeOAuthErrorFromUrl();
+    if (code) {
+      notifyOAuthError(code);
+    }
+  }, []);
+
+  // fetchError is the shared failure channel for the login and Dashboard
+  // screens — mirror it into one persistent toast with a Retry action; it
+  // dismisses itself when a retry clears the error. Replaces the old
+  // fetch-error banners.
+  useEffect(() => {
+    syncFetchErrorToast(fetchError, () => {
+      void refreshData();
+    });
+  }, [fetchError, refreshData]);
+
   const spotifyLogin = useCallback(async () => {
     try {
       const response = await fetch('/api/auth/spotify');
@@ -359,37 +427,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  const refreshSpotifyToken = useCallback(async (): Promise<boolean> => {
-    try {
-      const stored = localStorage.getItem(SPOTIFY_STORAGE_KEY);
-      if (!stored) return false;
-
-      const parsed = JSON.parse(stored) as { token: SpotifyToken };
-      if (!parsed.token?.refreshToken) return false;
-
-      const response = await fetch('/api/auth/refresh', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ refreshToken: parsed.token.refreshToken }),
-      });
-
-      if (!response.ok) return false;
-
-      const newToken = await response.json();
-      const updatedToken: SpotifyToken = {
-        ...parsed.token,
-        accessToken: newToken.access_token,
-        expiresAt: Date.now() + newToken.expires_in * 1000,
-      };
-
-      localStorage.setItem(SPOTIFY_STORAGE_KEY, JSON.stringify({ token: updatedToken, user: spotify.user }));
-      setSpotify((prev) => ({ ...prev, token: updatedToken }));
-      return true;
-    } catch (error) {
-      console.error('Error refreshing Spotify token:', error);
-      return false;
-    }
-  }, [spotify.user]);
+  // NOTE: `refreshSpotifyToken` (a context method that POSTed /api/auth/refresh
+  // directly) was removed — it had zero callers and silently dropped rotated
+  // refresh tokens. Token refresh now flows exclusively through
+  // SpotifyClient.refreshAccessToken (serialized, invalid_grant-aware).
 
   const setNavidromeCredentials = useCallback(async (credentials: NavidromeCredentials): Promise<boolean> => {
     setNavidrome((prev) => ({ ...prev, error: null, credentials }));
@@ -492,7 +533,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     navidrome,
     spotifyLogin,
     spotifyLogout,
-    refreshSpotifyToken,
     setNavidromeCredentials,
     testNavidromeConnection,
     clearNavidromeCredentials,

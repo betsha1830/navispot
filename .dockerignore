@@ -1,0 +1,45 @@
+# Never copy secrets into the image. The Dockerfile's `COPY . .` would
+# otherwise bake .env.local (with SPOTIFY_CLIENT_SECRET) into every build.
+.env
+.env.*
+!.env.example
+
+# Build outputs & caches (rebuilt inside the container)
+.next
+out
+build
+coverage
+
+# Dependencies (installed by the image's own pnpm install)
+node_modules
+
+# Git & CI
+.git
+.github
+.gitignore
+
+# Agent / tooling scratch
+.superpowers
+.commandcode
+.opencode
+.vscode
+.idea
+.kimchi
+
+# Stray non-pnpm lockfile (this project uses pnpm-lock.yaml)
+bun.lock
+bun.lockb
+
+# Misc
+Dockerfile
+docker-compose.yml
+.dockerignore
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+.DS_Store
+*.tsbuildinfo
+README.md
+docs

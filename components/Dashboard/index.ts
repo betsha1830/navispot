@@ -4,7 +4,6 @@ export { TableFilters, FilterChips } from './TableFilters';
 export { TableSearch } from './TableSearch';
 export { ConfirmationPopup } from './ConfirmationPopup';
 export { ExportLayoutManager } from './ExportLayoutManager';
-export { ExportProgressPanel } from './ExportProgressPanel';
 export { TableHeader } from './TableHeader';
 export { TableRow } from './TableRow';
 export { LovedSongsRow } from './LovedSongsRow';

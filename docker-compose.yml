@@ -12,17 +12,16 @@ services:
     restart: unless-stopped
 
   # Optional: Navidrome instance for testing
-  # Uncomment to use a local Navidrome server
+  # Uncomment to use a local Navidrome server. First login: the admin
+  # user is created from the credentials you use on first sign-in.
   # navidrome:
   #   image: deluan/navidrome:latest
   #   ports:
   #     - "4533:4533"
   #   environment:
-  #     - ND_MULTIUSER=true
-  #     - ND_INITIAL_USER=admin
-  #     - ND_INITIAL_USER_PASSWORD=admin
-  #     - ND音乐库路径=/music
+  #     # Optional config — e.g. ND_LOGLEVEL: debug
+  #     # See https://www.navidrome.org/docs/usage/configuration/
   #   volumes:
-  #     - ./music:/music
   #     - ./data:/data
+  #     - ./music:/music:ro
   #   restart: unless-stopped

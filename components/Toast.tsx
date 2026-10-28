@@ -1,166 +1,107 @@
 "use client"
 
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useRef,
-  useState,
-} from "react"
+import { createContext, useContext, useEffect, useMemo } from "react"
+import { Toaster, toast as sonnerToast } from "sonner"
 
 export type ToastType = "success" | "error" | "info" | "warning"
 
-export interface ToastItem {
-  id: string
-  type: ToastType
-  message: string
-  duration: number
+declare global {
+  interface Window {
+    /** Dev-only trigger — see ToastProvider below. Stripped from prod builds. */
+    __toasts?: (type?: ToastType) => void
+  }
 }
 
 interface ToastContextType {
-  showToast: (type: ToastType, message: string, duration?: number) => void
+  showToast: (type: ToastType, message: string, duration?: number) => string | number
   showSuccess: (message: string, duration?: number) => void
   showError: (message: string, duration?: number) => void
   showInfo: (message: string, duration?: number) => void
   showWarning: (message: string, duration?: number) => void
-  dismiss: (id: string) => void
+  dismiss: (id?: string | number) => void
 }
 
 const ToastContext = createContext<ToastContextType | null>(null)
 
-const TYPE_STYLES: Record<ToastType, { bg: string; icon: string }> = {
-  success: {
-    bg: "bg-green-500",
-    icon: "M5 13l4 4L19 7",
-  },
-  error: {
-    bg: "bg-red-500",
-    icon: "M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z",
-  },
-  info: {
-    bg: "bg-blue-500",
-    icon: "M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z",
-  },
-  warning: {
-    bg: "bg-yellow-500",
-    icon: "M12 9v2m0 4h.01M5 19h14a2 2 0 001.84-2.75L13.74 4a2 2 0 00-3.48 0L3.16 16.25A2 2 0 005 19z",
-  },
+const DEFAULT_DURATION = 5000
+
+// Real strings from the app so the dev preview matches what users see.
+const SAMPLE_MESSAGES: Record<ToastType, string> = {
+  success: "Export completed successfully!",
+  error: "Network error",
+  info: "Signed out",
+  warning: "Export was cancelled",
 }
 
-function ToastView({
-  toast,
-  onDismiss,
-}: {
-  toast: ToastItem
-  onDismiss: () => void
-}) {
-  const style = TYPE_STYLES[toast.type]
-  return (
-    <div
-      role="status"
-      className={`pointer-events-auto flex max-w-sm items-center gap-3 rounded-lg ${style.bg} px-4 py-3 text-white shadow-lg animate-fade-in`}
-    >
-      <svg
-        className="h-5 w-5 flex-shrink-0"
-        fill="none"
-        viewBox="0 0 24 24"
-        stroke="currentColor"
-        aria-hidden="true"
-      >
-        <path
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          strokeWidth={2}
-          d={style.icon}
-        />
-      </svg>
-      <span className="flex-1 text-sm font-medium">{toast.message}</span>
-      <button
-        type="button"
-        onClick={onDismiss}
-        aria-label="Dismiss notification"
-        className="text-white/80 hover:text-white"
-      >
-        <svg
-          className="h-4 w-4"
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
-          aria-hidden="true"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M6 18L18 6M6 6l12 12"
-          />
-        </svg>
-      </button>
-    </div>
-  )
-}
+const TYPE_ORDER: ToastType[] = ["success", "error", "info", "warning"]
 
 export function ToastProvider({ children }: { children: React.ReactNode }) {
-  const [toasts, setToasts] = useState<ToastItem[]>([])
-  const counter = useRef(0)
+  // Memoize the context value once: an unmemoized object (with fresh arrow
+  // functions) changes identity on every provider render, which re-triggers
+  // any effect with `toast` in its deps whenever a toast appears or
+  // disappears — including an infinite write→toast→rerender loop in the
+  // quota-fallback persistence path. Sonner holds toast state outside
+  // React, so the provider itself never re-renders on show/dismiss.
+  // Regression guard: components/Toast.test.tsx.
+  const value = useMemo<ToastContextType>(() => {
+    const showToast: ToastContextType["showToast"] = (
+      type,
+      message,
+      duration = DEFAULT_DURATION,
+    ) =>
+      sonnerToast[type](message, {
+        duration: duration > 0 ? duration : Infinity,
+      })
 
-  const dismiss = useCallback((id: string) => {
-    setToasts((prev) => prev.filter((t) => t.id !== id))
+    return {
+      showToast,
+      showSuccess: (msg, dur) => showToast("success", msg, dur),
+      showError: (msg, dur) => showToast("error", msg, dur),
+      showInfo: (msg, dur) => showToast("info", msg, dur),
+      showWarning: (msg, dur) => showToast("warning", msg, dur),
+      dismiss: (id) => sonnerToast.dismiss(id),
+    }
   }, [])
 
-  const showToast = useCallback<ToastContextType["showToast"]>(
-    (type, message, duration = 5000) => {
-      counter.current += 1
-      const id = `toast-${counter.current}`
-      setToasts((prev) => [...prev, { id, type, message, duration }])
-    },
-    [],
-  )
+  // Dev-only: fires every toast variant from the browser console so the
+  // notification styles can be reviewed without contriving app states.
+  //   window.__toasts()           → all four, staggered
+  //   window.__toasts('error')    → a single variant
+  // process.env.NODE_ENV is inlined by the bundler, so this whole block
+  // is dead code (and removed) in production builds.
+  useEffect(() => {
+    if (process.env.NODE_ENV === "production") return
 
-  const value: ToastContextType = {
-    showToast,
-    showSuccess: (msg, dur) => showToast("success", msg, dur),
-    showError: (msg, dur) => showToast("error", msg, dur),
-    showInfo: (msg, dur) => showToast("info", msg, dur),
-    showWarning: (msg, dur) => showToast("warning", msg, dur),
-    dismiss,
-  }
+    window.__toasts = (type) => {
+      if (type) {
+        sonnerToast[type](SAMPLE_MESSAGES[type])
+        return
+      }
+      TYPE_ORDER.forEach((t, i) => {
+        setTimeout(() => sonnerToast[t](SAMPLE_MESSAGES[t]), i * 400)
+      })
+    }
+
+    return () => {
+      delete window.__toasts
+    }
+  }, [])
 
   return (
     <ToastContext.Provider value={value}>
       {children}
-      <div
-        aria-live="polite"
-        aria-atomic="true"
-        className="pointer-events-none fixed right-4 top-4 z-50 flex flex-col gap-2"
-      >
-        {toasts.map((toast) => (
-          <AutoDismiss
-            key={toast.id}
-            toast={toast}
-            onDismiss={() => dismiss(toast.id)}
-          />
-        ))}
-      </div>
+      <Toaster
+        position="top-right"
+        // The app hardcodes the dark palette on <html class="dark">, so
+        // match it explicitly instead of following the OS preference.
+        theme="dark"
+        richColors
+        closeButton
+        gap={8}
+        duration={DEFAULT_DURATION}
+      />
     </ToastContext.Provider>
   )
-}
-
-function AutoDismiss({
-  toast,
-  onDismiss,
-}: {
-  toast: ToastItem
-  onDismiss: () => void
-}) {
-  useEffect(() => {
-    if (toast.duration <= 0) return
-    const timer = setTimeout(onDismiss, toast.duration)
-    return () => clearTimeout(timer)
-  }, [toast.duration, onDismiss])
-
-  return <ToastView toast={toast} onDismiss={onDismiss} />
 }
 
 export function useToast() {

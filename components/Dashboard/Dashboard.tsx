@@ -5,7 +5,6 @@ import { useAuth } from "@/lib/auth/auth-context"
 import { spotifyClient } from "@/lib/spotify/client"
 import { NavidromeApiClient, parseExportMetadata } from "@/lib/navidrome/client"
 import { SpotifyPlaylist, SpotifyTrack } from "@/types/spotify"
-import { NavidromePlaylist } from "@/types/navidrome"
 import { PlaylistTable } from "@/components/Dashboard/PlaylistTable"
 import { ExportLayoutManager } from "@/components/Dashboard/ExportLayoutManager"
 import { error as logError } from "@/lib/support/debug-log"
@@ -18,7 +17,6 @@ import {
   SelectedPlaylist,
 } from "@/components/Dashboard/SelectedPlaylistsPanel"
 import {
-  UnmatchedSongsPanel,
   UnmatchedSong,
 } from "@/components/Dashboard/UnmatchedSongsPanel"
 import {
@@ -55,6 +53,7 @@ import {
   getAllExportData,
   isPlaylistUpToDate,
   deletePlaylistExportData,
+  clearExpiredCache,
   type PlaylistExportData,
   type PlaylistExportDataV2,
   type TrackExportStatus,
@@ -63,8 +62,10 @@ import { PlaylistTableItem, PlaylistInfo } from "@/types/playlist-table"
 import { TrackMatch } from "@/types/matching"
 import { ImportedPlaylist } from "@/types/public-playlist"
 import { useToast } from "@/components/Toast"
-import { getJSON, setJSON } from "@/lib/storage"
+import { getJSON, setJSONWithQuotaFallback } from "@/lib/storage"
 import { trackKey as getTrackKey } from "@/lib/spotify/track-identity"
+import { getChangedPlaylistIds } from "@/lib/dashboard/refresh-change-detection"
+import type { FreshData } from "@/types/auth-context"
 import Image from "next/image"
 import NavispotLogo from "@/public/navispot.png"
 
@@ -116,7 +117,6 @@ export function Dashboard() {
     playlists,
     navidromePlaylists,
     likedSongsCount,
-    fetchError,
     refreshing,
     refreshData,
   } = useAuth()
@@ -126,7 +126,6 @@ export function Dashboard() {
     getJSON<ImportedPlaylist[]>(IMPORTED_STORAGE_KEY, []),
   )
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
-  const [error, setError] = useState<string | null>(null)
   const [progressState, setProgressState] = useState<ProgressState | null>(null)
 
   const [isExporting, setIsExporting] = useState(false)
@@ -182,17 +181,32 @@ export function Dashboard() {
   // Tracks playlist ids whose tracks are currently being fetched. Lives in a
   // ref (not state) so the fetch effect doesn't re-fire on every setState.
   const tracksFetchInFlightRef = useRef<Set<string>>(new Set())
+  // Ids whose next track fetch must bypass the HTTP cache. Set by the
+  // refresh handler when it invalidates them; consumed by the fetch effect.
+  const bypassCacheOnceRef = useRef<Set<string>>(new Set())
 
   useEffect(() => {
-    setJSON(IMPORTED_STORAGE_KEY, importedPlaylists)
-  }, [importedPlaylists])
-
-  const handlePlaylistImported = useCallback((playlist: ImportedPlaylist) => {
-    setImportedPlaylists((prev) => {
-      const filtered = prev.filter((p) => p.id !== playlist.id)
-      return [...filtered, playlist]
+    // Imported playlists hold full track objects and can exceed the ~5MB
+    // localStorage quota; when that happens, drop the oldest imports from
+    // what gets persisted rather than silently losing everything on the
+    // next reload.
+    const dropped = setJSONWithQuotaFallback(IMPORTED_STORAGE_KEY, importedPlaylists, {
+      timestampField: "importedAt",
     })
-  }, [])
+    if (dropped > 0) {
+      toast.showWarning(
+        `Browser storage was full — the ${dropped} oldest imported ${
+          dropped === 1 ? "playlist" : "playlists"
+        } won't be saved for next time. They can be re-imported anytime.`,
+      )
+    } else if (dropped < 0) {
+      // Even trimming to nothing couldn't make room — surface it in the
+      // console at least, so support requests have a trace.
+      console.error(
+        "[navispot] Could not persist imported playlists: browser storage is full.",
+      )
+    }
+  }, [importedPlaylists, toast])
 
   const [importingUrl, setImportingUrl] = useState(false)
 
@@ -276,27 +290,36 @@ export function Dashboard() {
   }, [importedPlaylists, toast])
 
   const handleRefreshPlaylists = async () => {
-    setError(null)
-
     const oldTrackCounts = new Map(playlists.map(p => [p.id, p.items.total]))
     const oldSnapshots = new Map(playlists.map(p => [p.id, p.snapshot_id]))
+    const oldLikedSongsCount = likedSongsCount
 
+    let fresh: FreshData | null = null
     try {
-      await refreshData()
+      // refreshData returns the freshly fetched playlists + liked count so
+      // changed-detection compares fresh-vs-old instead of the stale
+      // closure copy (which made the comparison a no-op and never
+      // invalidated the track cache).
+      fresh = await refreshData()
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to refresh playlists")
+      toast.showError(err instanceof Error ? err.message : "Failed to refresh playlists")
     }
 
-    const changedPlaylistIds = playlists
-      .filter(p => oldSnapshots.has(p.id))
-      .filter(p => {
-        const trackCountChanged = oldTrackCounts.get(p.id) !== p.items.total
-        const snapshotChanged = oldSnapshots.get(p.id) !== p.snapshot_id
-        return trackCountChanged || snapshotChanged
-      })
-      .map(p => p.id)
+    // Refresh failed — there is nothing fresh to compare against, so skip
+    // invalidation entirely (old-vs-old comparison was a silent no-op).
+    if (!fresh) return
+
+    const changedPlaylistIds = getChangedPlaylistIds({
+      sourcePlaylists: fresh.playlists,
+      oldTrackCounts,
+      oldSnapshots,
+      oldLikedSongsCount,
+      freshLikedSongsCount: fresh.likedSongsCount,
+      likedSongsId: LIKED_SONGS_ID,
+    })
 
     if (changedPlaylistIds.length > 0) {
+      changedPlaylistIds.forEach(id => bypassCacheOnceRef.current.add(id))
       setPlaylistTracksCache(prev => {
         const newCache = new Map(prev)
         changedPlaylistIds.forEach(id => newCache.delete(id))
@@ -330,10 +353,15 @@ export function Dashboard() {
   }
 
   useEffect(() => {
-    if (!spotify.isAuthenticated) return
+    // Sweep expired export caches (90-day retention) before loading —
+    // without this the cache grows unbounded across sessions until it
+    // hits the localStorage quota. Runs regardless of Spotify auth:
+    // imported public playlists can be exported without logging in, so
+    // skipSpotify users accumulate export caches too.
+    clearExpiredCache()
     const allData = getAllExportData()
     setTrackExportCache(allData)
-  }, [spotify.isAuthenticated])
+  }, [])
 
   useEffect(() => {
     const playlistItems: PlaylistTableItem[] = playlists.map((playlist) => {
@@ -442,9 +470,12 @@ export function Dashboard() {
   // Background fetch of playlist created dates (earliest added_at)
   // Fetches progressively — updates state after each playlist for immediate UI feedback
   // Caches dates in localStorage to avoid re-fetching on every page load.
-  // Yields to foreground track fetches to avoid starving the rate limiter.
+  // Yields to foreground track fetches to avoid starving the rate limiter,
+  // and pauses entirely while an export is running so background requests
+  // can't compete with export traffic for Spotify's per-app quota.
   useEffect(() => {
     if (!spotify.isAuthenticated || !spotify.token || playlists.length === 0) return
+    if (isExporting) return
 
     const CACHE_KEY = 'navispot-playlist-created-dates'
     let cancelled = false
@@ -488,7 +519,11 @@ export function Dashboard() {
       try {
         spotifyClient.setToken(spotify.token!)
 
-        const CONCURRENCY = 3
+        // Sequential batches of 2. These are background enrichment calls
+        // (dates shown in one table column) — a slower pace keeps the shared
+        // per-app Spotify quota free for user-initiated work. Dates are
+        // cached in localStorage so this cost is paid once per playlist.
+        const CONCURRENCY = 2
         for (let i = 0; i < missingIds.length; i += CONCURRENCY) {
           if (cancelled) break
 
@@ -529,7 +564,7 @@ export function Dashboard() {
 
     fetchDates()
     return () => { cancelled = true }
-  }, [spotify.isAuthenticated, spotify.token, playlists])
+  }, [spotify.isAuthenticated, spotify.token, playlists, isExporting])
 
   // Sync selectedIds with selectedPlaylistsStats for real-time population.
   // Triggered when the user checks/unchecks a row in the main table — the
@@ -612,45 +647,50 @@ export function Dashboard() {
     }
   }, [selectedIds, playlists, importedPlaylists, isExporting, trackExportCache, likedSongsCount])
 
-  // Fetch tracks for checked playlists
   // Fetch tracks for checked Spotify-owned playlists that aren't cached.
   // Imported playlists already have their tracks in memory (importedPlaylists),
   // so we skip them here and source directly in playlistGroups below.
   useEffect(() => {
-    let cancelled = false
+    if (!spotify.token) return
+
+    const importedIds = new Set(importedPlaylists.map((p) => p.id))
+    const uncachedIds = Array.from(checkedPlaylistIds).filter(
+      (id) =>
+        !playlistTracksCache.has(id) &&
+        !importedIds.has(id) &&
+        !tracksFetchInFlightRef.current.has(id),
+    )
+    if (uncachedIds.length === 0) return
+
+    // Mark in-flight in the ref BEFORE any await, so re-entrant effect runs
+    // see these ids as already in flight and skip them.
+    uncachedIds.forEach((id) => tracksFetchInFlightRef.current.add(id))
+    setLoadingTracks(true)
+    setLoadingPlaylistIds(new Set(tracksFetchInFlightRef.current))
+
+    const bypassIds = uncachedIds.filter((id) => bypassCacheOnceRef.current.has(id))
+    const fetched = new Map<string, Song[]>()
 
     async function fetchTracks() {
-      if (!spotify.token) return
-
-      const importedIds = new Set(importedPlaylists.map((p) => p.id))
-      const uncachedIds = Array.from(checkedPlaylistIds).filter(
-        (id) =>
-          !playlistTracksCache.has(id) &&
-          !importedIds.has(id) &&
-          !tracksFetchInFlightRef.current.has(id),
-      )
-      if (uncachedIds.length === 0) return
-
-      // Mark in-flight in the ref BEFORE any await, so re-entrant effect runs
-      // see these ids as already in flight and skip them.
-      uncachedIds.forEach((id) => tracksFetchInFlightRef.current.add(id))
-      setLoadingTracks(true)
-      setLoadingPlaylistIds(new Set(tracksFetchInFlightRef.current))
-
       try {
-        spotifyClient.setToken(spotify.token)
-        const newCache = new Map(playlistTracksCache)
+        spotifyClient.setToken(spotify.token!)
 
         await Promise.all(
           uncachedIds.map(async (id) => {
-            if (cancelled) return
             try {
               let tracks
               if (id === LIKED_SONGS_ID) {
-                const savedTracks = await spotifyClient.getAllSavedTracks()
+                const savedTracks = await spotifyClient.getAllSavedTracks(
+                  undefined,
+                  bypassIds.includes(id),
+                )
                 tracks = savedTracks.map((t) => t.track)
               } else {
-                const playlistTracks = await spotifyClient.getAllPlaylistTracks(id)
+                const playlistTracks = await spotifyClient.getAllPlaylistTracks(
+                  id,
+                  undefined,
+                  bypassIds.includes(id),
+                )
                 tracks = playlistTracks.map((t) => t.track)
               }
 
@@ -662,34 +702,38 @@ export function Dashboard() {
                   track.artists?.map((a) => a.name).join(", ") || "Unknown",
                 duration: formatDuration(track.duration_ms),
               }))
-
-              newCache.set(id, songs)
+              fetched.set(id, songs)
             } catch (error) {
               console.error(`Failed to fetch tracks for playlist ${id}:`, error)
-              newCache.set(id, [])
+              fetched.set(id, [])
             } finally {
               tracksFetchInFlightRef.current.delete(id)
               setLoadingPlaylistIds(new Set(tracksFetchInFlightRef.current))
             }
           }),
         )
-
-        if (cancelled) return
-        setPlaylistTracksCache(newCache)
       } catch (error) {
         console.error("Failed to fetch tracks:", error)
       } finally {
-        setLoadingTracks(false)
-        if (!cancelled && tracksFetchInFlightRef.current.size === 0) {
+        bypassIds.forEach((id) => bypassCacheOnceRef.current.delete(id))
+        // Commit even if this run was superseded by a dependency change
+        // (e.g. setImportedPlaylists during refresh). Dropping the result
+        // used to strand the id — uncached, not in flight, and with no
+        // state change to re-trigger the effect — leaving the songs table
+        // stale until an unrelated update forced a re-run.
+        setPlaylistTracksCache((prev) => {
+          const next = new Map(prev)
+          fetched.forEach((songs, id) => next.set(id, songs))
+          return next
+        })
+        if (tracksFetchInFlightRef.current.size === 0) {
+          setLoadingTracks(false)
           setLoadingPlaylistIds(new Set())
         }
       }
     }
 
     fetchTracks()
-    return () => {
-      cancelled = true
-    }
   }, [checkedPlaylistIds, spotify.token, playlistTracksCache, importedPlaylists])
 
   useEffect(() => {
@@ -886,12 +930,12 @@ export function Dashboard() {
 
   const handleStartExport = async () => {
     if (!navidrome.credentials) {
-      setError("Please connect Navidrome to export playlists.")
+      toast.showWarning("Please connect Navidrome to export playlists.")
       return
     }
     const needsSpotify = selectedIds.has(LIKED_SONGS_ID) || playlists.some((p) => selectedIds.has(p.id))
     if (needsSpotify && (!spotify.isAuthenticated || !spotify.token)) {
-      setError("Please connect Spotify to export your own playlists.")
+      toast.showWarning("Please connect Spotify to export your own playlists.")
       return
     }
 
@@ -918,7 +962,6 @@ export function Dashboard() {
     isExportingRef.current = true
     setIsExporting(true)
     setShowConfirmation(false)
-    setError(null)
 
     const newCount = incrementExportCount()
     if (newCount >= 5 && shouldShowSupportBubble()) {
@@ -972,7 +1015,16 @@ export function Dashboard() {
 
       for (let i = 0; i < itemsToExport.length; i++) {
         const item = itemsToExport[i]
-        const itemSnapshotId = "snapshot_id" in item ? (item.snapshot_id || "") : ""
+        // Owned playlists expose snapshot_id; imported public playlists
+        // expose sourceRevision (the same Spotify snapshot). Using it for
+        // imports keeps the "unchanged → skip" check honest; falling back
+        // to "" would compare "" === "" and wrongly skip changed imports.
+        const itemSnapshotId =
+          "snapshot_id" in item
+            ? item.snapshot_id || ""
+            : "isImported" in item && item.isImported
+              ? item.sourceRevision || ""
+              : ""
         let progress = createInitialProgressState(0)
         setProgressState(progress)
 
@@ -1023,7 +1075,53 @@ export function Dashboard() {
           tracks = item.tracks
           isLikedSongs = false
           cachedData = loadPlaylistExportData(item.id)
-          useDifferentialMatching = false
+
+          // Imported playlists follow the same linking rules as owned ones:
+          // if a Navidrome playlist already references this Spotify ID (in
+          // its comment), re-export UPDATES it instead of creating a
+          // duplicate on every run.
+          let serverLinkedId: string | undefined
+          if (!cachedData?.navidromePlaylistId && !forceExportPlaylists) {
+            const serverPlaylist = await navidromeClient.getPlaylistByComment(item.id)
+            if (serverPlaylist) {
+              serverLinkedId = serverPlaylist.id
+              const serverMetadata = parseExportMetadata(serverPlaylist.comment)
+              cachedData = cachedData
+                ? { ...cachedData, navidromePlaylistId: serverPlaylist.id }
+                : {
+                    spotifyPlaylistId: item.id,
+                    spotifySnapshotId: serverMetadata?.spotifySnapshotId ?? '',
+                    playlistName: item.name,
+                    navidromePlaylistId: serverPlaylist.id,
+                    exportedAt: serverMetadata?.exportedAt ?? new Date().toISOString(),
+                    trackCount: serverMetadata?.trackCount ?? 0,
+                    tracks: {},
+                    statistics: { total: 0, matched: 0, unmatched: 0, ambiguous: 0 },
+                  }
+            }
+          }
+
+          existingNavidromeId = cachedData?.navidromePlaylistId ?? serverLinkedId
+
+          // With a full per-track cache, match differentially against it
+          // (cheap). With only a server-side link (no per-track cache),
+          // run a full match pass — but still against the EXISTING
+          // Navidrome playlist (update mode diffs server-side), never a
+          // duplicate create.
+          useDifferentialMatching =
+            !forceExportPlaylists &&
+            !!cachedData?.navidromePlaylistId &&
+            Object.keys(cachedData.tracks).length > 0
+
+          // Imported playlists change when the source snapshot changes —
+          // same up-to-date check as owned playlists. Only trust it when
+          // we have a per-track cache to compare against.
+          upToDate =
+            !forceExportPlaylists &&
+            !!cachedData?.navidromePlaylistId &&
+            Object.keys(cachedData.tracks).length > 0
+              ? isPlaylistUpToDate(cachedData, itemSnapshotId)
+              : false
         } else {
           tracks = (await spotifyClient.getAllPlaylistTracks(item.id, signal)).map(
             (t) => t.track,
@@ -1452,13 +1550,16 @@ export function Dashboard() {
           }
         } else {
           const forceCreate = forceExportPlaylists
+          // Update the linked Navidrome playlist when one exists (either
+          // from the local cache or discovered via the playlist comment) —
+          // imported playlists included. Only a deliberate re-create (or
+          // no existing link) falls back to create mode.
+          const shouldUpdate =
+            !forceCreate && !!existingNavidromeId && !upToDate
           const exporterOptions: PlaylistExporterOptions = {
-            mode:
-              !forceCreate && useDifferentialMatching && cachedData?.navidromePlaylistId
-                ? "update"
-                : "create",
+            mode: shouldUpdate ? "update" : "create",
             existingPlaylistId:
-              !forceCreate ? cachedData?.navidromePlaylistId : undefined,
+              !forceCreate && shouldUpdate ? existingNavidromeId : undefined,
             skipUnmatched: false,
             isPublic: exportPlaylistsAsPublic,
             cachedData:
@@ -1621,7 +1722,6 @@ export function Dashboard() {
       if (err instanceof DOMException && err.name === 'AbortError') {
         toast.showWarning("Export was cancelled")
       } else {
-        setError(errorMessage)
         setProgressState({
           phase: "error",
           progress: { current: 0, total: 0, percent: 0 },
@@ -1922,14 +2022,6 @@ export function Dashboard() {
       totalCount={tableItems.length}
     />
   )
-
-  if (error) {
-    return (
-      <div className="flex min-h-[400px] items-center justify-center">
-        <p className="text-red-500">Error: {error}</p>
-      </div>
-    )
-  }
 
   return (
     <div>

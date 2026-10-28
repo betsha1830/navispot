@@ -21,17 +21,6 @@ export function generateAuthHeader(username: string, password: string): string {
   return `Basic ${encoded}`;
 }
 
-export function normalizeSearchQuery(query: string): string {
-  return query
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[''`´']/g, '')  // Remove various apostrophe characters
-    .replace(/[^a-z0-9\s]/g, ' ')  // Replace special chars with spaces
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
 export function parseExportMetadata(comment: string | undefined): ExportMetadata | null {
   if (!comment || comment.trim() === '') {
     return null;
@@ -293,15 +282,40 @@ export class NavidromeApiClient {
     const playlistResponse = await this._makeNativeRequest<NavidromePlaylist>(`/api/playlist/${playlistId}`, {}, signal);
     const playlist = this._mapPlaylist(playlistResponse);
 
-    const tracksResponse = await this._makeNativeRequest<NavidromeNativeSong[] | { items: NavidromeNativeSong[] }>(`/api/playlist/${playlistId}/tracks`, { _start: 0, _end: 1000 }, signal);
+    // Paginate fully — a fixed _end cap silently truncates large playlists
+    // at that many tracks, and update-mode exports then compute removals
+    // against a partial list (removing songs that actually exist beyond
+    // the cap). Stop when a page comes back short.
+    const tracks: NavidromeNativeSong[] = [];
+    const limit = 500;
+    // Belt-and-braces bound: a misbehaving server that ignores _start and
+    // always returns a full first page would otherwise loop forever. No
+    // real playlist needs anywhere near this many pages (100k tracks).
+    const maxPages = 200;
+    let start = 0;
+    let pages = 0;
 
-    let tracks: NavidromeNativeSong[];
-    if (Array.isArray(tracksResponse)) {
-      tracks = tracksResponse;
-    } else if (tracksResponse.items) {
-      tracks = tracksResponse.items;
-    } else {
-      tracks = [];
+    while (pages < maxPages) {
+      const page = await this._makeNativeRequest<NavidromeNativeSong[] | { items: NavidromeNativeSong[] }>(
+        `/api/playlist/${playlistId}/tracks`,
+        { _start: start, _end: start + limit },
+        signal,
+      );
+
+      let items: NavidromeNativeSong[];
+      if (Array.isArray(page)) {
+        items = page;
+      } else if (page.items) {
+        items = page.items;
+      } else {
+        items = [];
+      }
+
+      if (items.length === 0) break;
+      tracks.push(...items);
+      if (items.length < limit) break;
+      start += limit;
+      pages++;
     }
 
     return {

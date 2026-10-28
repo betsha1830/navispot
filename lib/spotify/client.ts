@@ -13,6 +13,32 @@ const SPOTIFY_API_BASE = 'https://api.spotify.com/v1';
 const MAX_ERROR_BODY_CHARS = 8 * 1024;
 const ERROR_MESSAGE_BODY_CHARS = 200;
 
+/**
+ * Sleeps for `ms`, but rejects immediately with an AbortError if `signal`
+ * fires first. Used for retry backoffs so cancelling an export doesn't have
+ * to wait out a long Retry-After delay.
+ */
+function abortableSleep(ms: number, signal?: AbortSignal): Promise<void> {
+  if (ms <= 0) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort);
+      resolve();
+    }, ms);
+    function onAbort() {
+      clearTimeout(timer);
+      reject(new DOMException('Request was aborted', 'AbortError'));
+    }
+    if (signal) {
+      if (signal.aborted) {
+        onAbort();
+        return;
+      }
+      signal.addEventListener('abort', onAbort, { once: true });
+    }
+  });
+}
+
 export class SpotifyApiError extends Error {
   readonly status: number;
   readonly body: string;
@@ -39,6 +65,9 @@ export class SpotifyApiError extends Error {
 
 export class SpotifyClient {
   private token: SpotifyToken | null = null;
+  // In-flight refresh promise shared by concurrent callers (see
+  // refreshAccessToken) to avoid parallel token refresh requests.
+  private refreshInFlight: Promise<SpotifyToken | null> | null = null;
 
   setToken(token: SpotifyToken): void {
     this.token = token;
@@ -64,10 +93,13 @@ export class SpotifyClient {
     return response.json();
   }
 
-  async getPlaylistTracks(playlistId: string, limit: number = 50, offset: number = 0, signal?: AbortSignal): Promise<SpotifyTracksResponse> {
+  async getPlaylistTracks(playlistId: string, limit: number = 50, offset: number = 0, signal?: AbortSignal, bypassCache: boolean = false): Promise<SpotifyTracksResponse> {
     await spotifyRateLimiter.acquire();
     const params = new URLSearchParams({ limit: limit.toString(), offset: offset.toString() });
-    const response = await this.fetch(`/playlists/${playlistId}/items?${params.toString()}`, signal);
+    if (bypassCache) {
+      params.append('_t', Date.now().toString());
+    }
+    const response = await this.fetch(`/playlists/${playlistId}/items?${params.toString()}`, signal, {}, bypassCache);
     const data: SpotifyTracksResponse = await response.json();
     if (!Array.isArray(data.items)) {
       data.items = [];
@@ -88,13 +120,13 @@ export class SpotifyClient {
     return data;
   }
 
-  async getAllPlaylistTracks(playlistId: string, signal?: AbortSignal): Promise<SpotifyPlaylistTrack[]> {
+  async getAllPlaylistTracks(playlistId: string, signal?: AbortSignal, bypassCache: boolean = false): Promise<SpotifyPlaylistTrack[]> {
     const allTracks: SpotifyPlaylistTrack[] = [];
     let offset = 0;
     const limit = 50;
 
     while (true) {
-      const response = await this.getPlaylistTracks(playlistId, limit, offset, signal);
+      const response = await this.getPlaylistTracks(playlistId, limit, offset, signal, bypassCache);
       if (!Array.isArray(response.items) || response.items.length === 0) {
         break;
       }
@@ -125,13 +157,13 @@ export class SpotifyClient {
     return response.json();
   }
 
-  async getAllSavedTracks(signal?: AbortSignal): Promise<SpotifySavedTrack[]> {
+  async getAllSavedTracks(signal?: AbortSignal, bypassCache: boolean = false): Promise<SpotifySavedTrack[]> {
     const allTracks: SpotifySavedTrack[] = [];
     let offset = 0;
     const limit = 50;
 
     while (true) {
-      const response = await this.getSavedTracks(limit, offset, signal);
+      const response = await this.getSavedTracks(limit, offset, signal, bypassCache);
       if (!Array.isArray(response.items) || response.items.length === 0) {
         break;
       }
@@ -227,70 +259,83 @@ export class SpotifyClient {
     return earliest;
   }
 
-  /**
-   * Fetches the created date (earliest added_at) for multiple playlists.
-   * Processes playlists sequentially to respect rate limits.
-   * Returns a Map of playlistId → earliest ISO date string.
-   */
-  async getPlaylistCreatedDates(
-    playlistIds: string[],
-    signal?: AbortSignal,
-    onProgress?: (completed: number, total: number) => void,
-  ): Promise<Map<string, string>> {
-    const result = new Map<string, string>();
-
-    for (let i = 0; i < playlistIds.length; i++) {
-      if (signal?.aborted) break;
-
-      try {
-        const createdDate = await this.getPlaylistCreatedDate(playlistIds[i], signal);
-        if (createdDate) {
-          result.set(playlistIds[i], createdDate);
-        }
-      } catch {
-        // Skip playlists that fail (e.g., deleted or access revoked)
-      }
-
-      onProgress?.(i + 1, playlistIds.length);
-    }
-
-    return result;
-  }
-
   async refreshAccessToken(): Promise<SpotifyToken | null> {
     if (!this.token?.refreshToken) return null;
 
+    // Serialize concurrent refreshes: when multiple API calls notice an
+    // expired token at once (track fetches + background date fetches), they
+    // all share a single refresh request instead of firing N parallel ones.
+    if (this.refreshInFlight) {
+      return this.refreshInFlight;
+    }
+
+    this.refreshInFlight = this.doRefreshAccessToken().finally(() => {
+      this.refreshInFlight = null;
+    });
+    return this.refreshInFlight;
+  }
+
+  /**
+   * Emitted on window when the refresh token is permanently dead
+   * (Spotify returned invalid_grant — token expired after its 6-month
+   * lifetime or was revoked). Per Spotify docs the app must send the user
+   * through the authorization flow again; listeners should clear local
+   * state and prompt a reconnect.
+   */
+  private handleInvalidGrant(): void {
+    warn('Spotify refresh token is invalid (expired or revoked) — reauthorization required');
+    try {
+      localStorage.removeItem(SPOTIFY_STORAGE_KEY);
+    } catch {
+      // storage unavailable — nothing to clear
+    }
+    this.clearToken();
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('navispot:spotify-reauth-required'));
+    }
+  }
+
+  private async doRefreshAccessToken(): Promise<SpotifyToken | null> {
+    // Transient failures (network, 5xx) get a couple of retries.
+    // invalid_grant is permanent and is NOT retried.
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
         const response = await fetch('/api/auth/refresh', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ refreshToken: this.token.refreshToken }),
+          body: JSON.stringify({ refreshToken: this.token?.refreshToken }),
         });
 
+        if (response.status === 400) {
+          const data = await response.json().catch(() => ({}));
+          if (data?.error === 'invalid_grant') {
+            this.handleInvalidGrant();
+            return null;
+          }
+          // Other 400s (e.g. invalid_request) are also permanent.
+          return null;
+        }
+
         if (!response.ok) {
-          if (response.status === 400) return null;
+          // 502/500 from our route — Spotify endpoint issue, transient.
           throw new Error(`Refresh failed: ${response.status}`);
         }
 
         const data = await response.json();
+        if (!this.token) return null;
+
+        // Spotify may rotate refresh tokens; keep the old one when the
+        // response does not include a new one (documented behavior).
         const newToken: SpotifyToken = {
           accessToken: data.access_token,
-          refreshToken: this.token.refreshToken,
+          refreshToken: data.refresh_token || this.token.refreshToken,
           expiresAt: Date.now() + data.expires_in * 1000,
           tokenType: data.token_type,
           scope: data.scope,
         };
 
         this.setToken(newToken);
-        
-        const stored = localStorage.getItem(SPOTIFY_STORAGE_KEY);
-        if (stored) {
-          const parsed = JSON.parse(stored);
-          parsed.token = newToken;
-          localStorage.setItem(SPOTIFY_STORAGE_KEY, JSON.stringify(parsed));
-        }
-        
+        this.persistToken(newToken);
         return newToken;
       } catch {
         if (attempt < 2) {
@@ -299,6 +344,19 @@ export class SpotifyClient {
       }
     }
     return null;
+  }
+
+  private persistToken(token: SpotifyToken): void {
+    try {
+      const stored = localStorage.getItem(SPOTIFY_STORAGE_KEY);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        parsed.token = token;
+        localStorage.setItem(SPOTIFY_STORAGE_KEY, JSON.stringify(parsed));
+      }
+    } catch {
+      // storage unavailable — token still lives in memory for this session
+    }
   }
 
   private async fetch(endpoint: string, signal?: AbortSignal, options: RequestInit = {}, bypassCache: boolean = false): Promise<Response> {
@@ -338,10 +396,51 @@ export class SpotifyClient {
 
       if (response.status === 401) {
         const refreshed = await this.refreshAccessToken();
-        if (refreshed) {
-          return this.fetch(endpoint, signal, options, bypassCache);
+        if (refreshed && this.token) {
+          if (attempt > 0) {
+            // Already retried after a refresh and Spotify still says 401 —
+            // don't loop forever on a rejected token.
+            throw new Error('Token rejected by Spotify after refresh');
+          }
+          // Retry once with the fresh token.
+          fetchOptions.headers = {
+            ...fetchOptions.headers,
+            Authorization: `Bearer ${this.token.accessToken}`,
+          };
+          continue;
         }
-        throw new Error('Token expired and refresh failed');
+        throw new Error('Token expired and refresh failed — reconnect Spotify');
+      }
+
+      if (response.status === 429) {
+        // Spotify rate limits: honor the Retry-After header (in seconds) when
+        // present, otherwise back off exponentially. Docs: "The header of the
+        // 429 response will normally include a Retry-After header with a value
+        // in seconds." Retrying here (instead of throwing) keeps large
+        // exports alive instead of killing them on the first 429.
+        lastBody = await response.text().catch(() => '');
+        lastError = new SpotifyApiError(429, lastBody);
+        if (attempt < 2) {
+          const retryAfterHeader = response.headers.get('Retry-After');
+          let delayMs: number;
+          if (retryAfterHeader !== null) {
+            const retryAfterSec = Number(retryAfterHeader);
+            if (Number.isFinite(retryAfterSec)) {
+              delayMs = Math.max(0, retryAfterSec * 1000);
+            } else {
+              // Retry-After may be an HTTP-date; fall back to exponential.
+              const retryDate = Date.parse(retryAfterHeader);
+              delayMs = Number.isFinite(retryDate)
+                ? Math.max(0, retryDate - Date.now())
+                : Math.pow(2, attempt) * 1000;
+            }
+          } else {
+            delayMs = Math.pow(2, attempt) * 1000;
+          }
+          await abortableSleep(delayMs, signal);
+          continue;
+        }
+        throw new SpotifyApiError(429, lastBody);
       }
 
       if (response.status >= 500 && response.status < 600) {
