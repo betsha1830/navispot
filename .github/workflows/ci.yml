@@ -136,8 +136,8 @@ jobs:
           errored=0
           found=0
           while IFS= read -r -d '' f; do
-            match="$(grep -I -lE -- "$pattern" "$f" 2>/dev/null)" 
-            rc=$?
+            rc=0
+            match="$(grep -I -lE -- "$pattern" "$f" 2>/dev/null)" || rc=$?
             if [ "$rc" -gt 1 ]; then
               echo "::error::Secret scan could not read $f (grep status $rc)"
               errored=1
@@ -145,11 +145,15 @@ jobs:
               found=1
             fi
           done < <(git ls-files -z -- . ':(exclude).env.example')
-          [ "$errored" -eq 1 ] && exit 1
+          if [ "$errored" -eq 1 ]; then
+            exit 1
+          fi
           if [ "$found" -eq 1 ]; then
             echo "::error::Secret-like content found in tracked files:"
-            git ls-files -- . ':(exclude).env.example' | while IFS= read -r f; do
-              grep -I -qE -- "$pattern" "$f" 2>/dev/null && echo "$f"
-            done
+            while IFS= read -r f; do
+              if grep -I -qE -- "$pattern" "$f" 2>/dev/null; then
+                echo "$f"
+              fi
+            done < <(git ls-files -- . ':(exclude).env.example')
             exit 1
           fi
