@@ -98,15 +98,17 @@ jobs:
           # the lockfile refresh tracked in docs/navispot-security-report.md.
           new_critical="$(jq -r '[.advisories[]? | select(.severity == "critical") | .url | capture("(?<g>GHSA-[A-Za-z0-9-]+)").g] | unique | join(", ")' "$tmp")"
           new_high="$(jq -r '
-            [.advisories[]? | select(.severity == "high")
-              | .url | capture("(?<g>GHSA-[A-Za-z0-9-]+)").g]
-            - [
-                "GHSA-2v37-7h3g-55p8",  # accepted: nanoid <3.3.18, high, transitive via next
-                "GHSA-c83g-rgw3-j3cx",  # accepted: browserslist <=4.28.6, high, transitive via next
-                "GHSA-73wf-gq98-2v4g",  # accepted: browserslist <=4.28.6, high, transitive via next
-                "GHSA-68fv-2mgg-jv7q"   # accepted: source-map-js <1.2.2, high, transitive via next
-              ]
-            | unique | join(", ")' "$tmp")"
+            def base: [
+                {ghsa: "GHSA-2v37-7h3g-55p8", pkg: "nanoid"},        # accepted: transitive via next
+                {ghsa: "GHSA-c83g-rgw3-j3cx", pkg: "browserslist"},  # accepted: transitive via next
+                {ghsa: "GHSA-73wf-gq98-2v4g", pkg: "browserslist"},  # accepted: transitive via next
+                {ghsa: "GHSA-68fv-2mgg-jv7q", pkg: "source-map-js"}  # accepted: transitive via next
+              ];
+            [.advisories[]?
+              | select(.severity == "high")
+              | {ghsa: (.url | capture("(?<g>GHSA-[A-Za-z0-9-]+)").g), pkg: .module_name}]
+            - base
+            | map(.ghsa) | unique | join(", ")' "$tmp")"
           if [ -n "$new_critical$new_high" ]; then
             [ -n "$new_critical" ] && echo "::error::Unaccepted CRITICAL advisories in production dependencies: $new_critical"
             [ -n "$new_high" ] && echo "::error::Unaccepted high advisories in production dependencies: $new_high"
@@ -151,10 +153,10 @@ jobs:
           fi
           if [ "$found" -eq 1 ]; then
             echo "::error::Secret-like content found in tracked files:"
-            while IFS= read -r f; do
+            while IFS= read -r -d '' f; do
               if scan_file "$pattern" "$f"; then
                 echo "$f"
               fi
-            done < <(git ls-files -- .)
+            done < <(git ls-files -z -- .)
             exit 1
           fi
