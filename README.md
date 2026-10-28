@@ -147,6 +147,64 @@ NEXT_PUBLIC_APP_URL=https://your-domain.com #localhost: http://127.0.0.1:3000
 
 Update Spotify Dashboard with your production redirect URI.
 
+### Live Site + Local Navidrome (Cloudflare Tunnel)
+
+The hosted demo is served over HTTPS, and browsers block plain-HTTP requests
+from HTTPS pages. A LAN address like `http://192.168.1.50:4533` will fail even
+though the server is reachable from your network. Give Navidrome an HTTPS URL
+instead — a tunnel does that without opening a port on your router.
+
+**1. Install `cloudflared` on the machine running Navidrome**
+
+```bash
+# macOS
+brew install cloudflared
+
+# Windows
+winget install --id Cloudflare.cloudflared
+
+# Linux (Debian/Ubuntu)
+curl -L -o cloudflared.deb \
+  https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
+sudo dpkg -i cloudflared.deb
+```
+
+Or use Docker, if you'd rather not install anything:
+
+```bash
+docker run --rm --network host cloudflare/cloudflared:latest \
+  tunnel --url http://localhost:4533
+```
+
+**2. Start the tunnel, pointing at your Navidrome** (default port `4533`)
+
+```bash
+cloudflared tunnel --url http://localhost:4533
+```
+
+If Navidrome runs on a different machine or port, use that address instead.
+
+**3. Copy the URL from the output**
+
+```text
+https://random-words-here.trycloudflare.com
+```
+
+**4. Open the live site and use that URL**
+
+Go to [navispot.gaga.pro.et](https://navispot.gaga.pro.et/), enter the tunnel
+URL as your server address, and log in with your normal Navidrome credentials.
+Keep the tunnel command running while you use the site.
+
+**Notes**
+
+- The `trycloudflare.com` hostname is random and changes every time the tunnel
+  restarts, so you'll need to re-enter it in NaviSpot. For a fixed address, set
+  up a named Cloudflare tunnel (requires a free Cloudflare account and a domain
+  you own), or use Tailscale instead: `tailscale serve --bg 4533`.
+- The tunnel URL is reachable from the internet, protected only by your
+  Navidrome login. Stop the tunnel when you're done.
+
 ---
 
 ## 💝 Donations
