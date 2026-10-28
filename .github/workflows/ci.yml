@@ -92,13 +92,6 @@ jobs:
             cat "$tmp"
             exit 1
           fi
-          tmp="$(mktemp)"
-          pnpm audit --prod --json >"$tmp" || true
-          if ! jq -e 'type == "object" and has("advisories")' "$tmp" >/dev/null; then
-            echo "::error::pnpm audit did not produce a usable report (fix the pnpm error above first)"
-            cat "$tmp"
-            exit 1
-          fi
           # Baselines are severity-bound: a baselined GHSA reclassified as
           # critical is NOT suppressed. Only highs are accepted.
           # High baseline: transitive deps bundled by next; dropping them needs
@@ -124,36 +117,44 @@ jobs:
       - name: Secret scan (tracked files)
         # Scans tracked files only (not git history): catches credentials
         # mistakenly committed where gitignored .env* files belong.
-        # .env.example is excluded: it carries placeholder values next to real
-        # variable names, so name-based patterns would trip on it forever.
-        # Matched values are never printed (-l prints file paths only): a
-        # committed credential must not be copied into the workflow log.
-        # grep exit semantics per file: 0 = match, 1 = clean, >=2 = error.
-        # A read error fails the whole step (fail closed); it is never
-        # silently treated as a clean scan.
+        # .env.example is scanned too, but its documented your_* placeholder
+        # values are masked first — a real credential committed there is still
+        # matched, while the file's own placeholder lines never trip.
+        # Matched values are never printed: a committed credential must not be
+        # copied into the workflow log (file paths and line numbers only).
+        # grep exit semantics: 0 = match, 1 = clean, >=2 = error. A read
+        # error fails the whole step (fail closed).
         run: |
           pattern='-----BEGIN [A-Z ]*PRIVATE KEY-----|sk_live_[0-9a-zA-Z]{20,}|AKIA[0-9A-Z]{16}|ASIA[0-9A-Z]{16}|GOOG[0-9A-Za-z_-]{28,}|(ENCRYPTION_KEY|SESSION_SECRET|SECRET_KEY|API_KEY|SPOTIFY_CLIENT_SECRET|NAVIDROME_PASSWORD)=[A-Za-z0-9+/=_-]{20,}'
+          # rc mirrors grep: 0 match / 1 clean / >=2 error
+          scan_file() {
+            if [ "$2" = ".env.example" ]; then
+              grep -qE -- "$1" <(sed -E 's/^(SPOTIFY_CLIENT_ID|SPOTIFY_CLIENT_SECRET|SPOTIFY_REDIRECT_URI|NEXT_PUBLIC_APP_URL)=your_[a-zA-Z_-]+/\1<masked_placeholder>/' "$2" 2>/dev/null) || return $?
+            else
+              grep -qE -- "$1" "$2" 2>/dev/null || return $?
+            fi
+          }
           errored=0
           found=0
           while IFS= read -r -d '' f; do
             rc=0
-            match="$(grep -I -lE -- "$pattern" "$f" 2>/dev/null)" || rc=$?
-            if [ "$rc" -gt 1 ]; then
+            scan_file "$pattern" "$f" || rc=$?
+            if [ "$rc" -ge 2 ]; then
               echo "::error::Secret scan could not read $f (grep status $rc)"
               errored=1
             elif [ "$rc" -eq 0 ]; then
               found=1
             fi
-          done < <(git ls-files -z -- . ':(exclude).env.example')
+          done < <(git ls-files -z -- .)
           if [ "$errored" -eq 1 ]; then
             exit 1
           fi
           if [ "$found" -eq 1 ]; then
             echo "::error::Secret-like content found in tracked files:"
             while IFS= read -r f; do
-              if grep -I -qE -- "$pattern" "$f" 2>/dev/null; then
+              if scan_file "$pattern" "$f"; then
                 echo "$f"
               fi
-            done < <(git ls-files -- . ':(exclude).env.example')
+            done < <(git ls-files -- .)
             exit 1
           fi
