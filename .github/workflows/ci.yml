@@ -92,19 +92,31 @@ jobs:
             cat "$tmp"
             exit 1
           fi
-          new_advisories="$(jq -r '
-            [.advisories[]?
-              | select(.severity == "high" or .severity == "critical")
+          tmp="$(mktemp)"
+          pnpm audit --prod --json >"$tmp" || true
+          if ! jq -e 'type == "object" and has("advisories")' "$tmp" >/dev/null; then
+            echo "::error::pnpm audit did not produce a usable report (fix the pnpm error above first)"
+            cat "$tmp"
+            exit 1
+          fi
+          # Baselines are severity-bound: a baselined GHSA reclassified as
+          # critical is NOT suppressed. Only highs are accepted.
+          # High baseline: transitive deps bundled by next; dropping them needs
+          # the lockfile refresh tracked in docs/navispot-security-report.md.
+          new_critical="$(jq -r '[.advisories[]? | select(.severity == "critical") | .url | capture("(?<g>GHSA-[A-Za-z0-9-]+)").g] | unique | join(", ")' "$tmp")"
+          new_high="$(jq -r '
+            [.advisories[]? | select(.severity == "high")
               | .url | capture("(?<g>GHSA-[A-Za-z0-9-]+)").g]
             - [
-                "GHSA-2v37-7h3g-55p8",  # nanoid <3.3.18, high, transitive via next
-                "GHSA-c83g-rgw3-j3cx",  # browserslist <=4.28.6, high, transitive via next
-                "GHSA-73wf-gq98-2v4g",  # browserslist <=4.28.6, high, transitive via next
-                "GHSA-68fv-2mgg-jv7q"   # source-map-js <1.2.2, high, transitive via next
+                "GHSA-2v37-7h3g-55p8",  # accepted: nanoid <3.3.18, high, transitive via next
+                "GHSA-c83g-rgw3-j3cx",  # accepted: browserslist <=4.28.6, high, transitive via next
+                "GHSA-73wf-gq98-2v4g",  # accepted: browserslist <=4.28.6, high, transitive via next
+                "GHSA-68fv-2mgg-jv7q"   # accepted: source-map-js <1.2.2, high, transitive via next
               ]
-            | join(", ")' "$tmp")"
-          if [ -n "$new_advisories" ]; then
-            echo "::error::Unaccepted critical/high advisories in production dependencies: $new_advisories"
+            | unique | join(", ")' "$tmp")"
+          if [ -n "$new_critical$new_high" ]; then
+            [ -n "$new_critical" ] && echo "::error::Unaccepted CRITICAL advisories in production dependencies: $new_critical"
+            [ -n "$new_high" ] && echo "::error::Unaccepted high advisories in production dependencies: $new_high"
             echo "Fix them or move to the baseline in .github/workflows/ci.yml (rationale: docs/navispot-security-report.md)."
             exit 1
           fi
@@ -112,9 +124,32 @@ jobs:
       - name: Secret scan (tracked files)
         # Scans tracked files only (not git history): catches credentials
         # mistakenly committed where gitignored .env* files belong.
+        # .env.example is excluded: it carries placeholder values next to real
+        # variable names, so name-based patterns would trip on it forever.
+        # Matched values are never printed (-l prints file paths only): a
+        # committed credential must not be copied into the workflow log.
+        # grep exit semantics per file: 0 = match, 1 = clean, >=2 = error.
+        # A read error fails the whole step (fail closed); it is never
+        # silently treated as a clean scan.
         run: |
-          if findings="$(git ls-files -z | xargs -0 --no-run-if-empty grep -I -nEao -- '-----BEGIN [A-Z ]*PRIVATE KEY-----|sk_live_[0-9a-zA-Z]{20,}|AKIA[0-9A-Z]{16}|ASIA[0-9A-Z]{16}|GOOG[0-9A-Za-z_-]{28,}|(ENCRYPTION_KEY|SESSION_SECRET|SECRET_KEY|API_KEY)=[A-Za-z0-9+/=_-]{20,}')"; then
+          pattern='-----BEGIN [A-Z ]*PRIVATE KEY-----|sk_live_[0-9a-zA-Z]{20,}|AKIA[0-9A-Z]{16}|ASIA[0-9A-Z]{16}|GOOG[0-9A-Za-z_-]{28,}|(ENCRYPTION_KEY|SESSION_SECRET|SECRET_KEY|API_KEY|SPOTIFY_CLIENT_SECRET|NAVIDROME_PASSWORD)=[A-Za-z0-9+/=_-]{20,}'
+          errored=0
+          found=0
+          while IFS= read -r -d '' f; do
+            match="$(grep -I -lE -- "$pattern" "$f" 2>/dev/null)" 
+            rc=$?
+            if [ "$rc" -gt 1 ]; then
+              echo "::error::Secret scan could not read $f (grep status $rc)"
+              errored=1
+            elif [ "$rc" -eq 0 ]; then
+              found=1
+            fi
+          done < <(git ls-files -z -- . ':(exclude).env.example')
+          [ "$errored" -eq 1 ] && exit 1
+          if [ "$found" -eq 1 ]; then
             echo "::error::Secret-like content found in tracked files:"
-            echo "$findings"
+            git ls-files -- . ':(exclude).env.example' | while IFS= read -r f; do
+              grep -I -qE -- "$pattern" "$f" 2>/dev/null && echo "$f"
+            done
             exit 1
           fi

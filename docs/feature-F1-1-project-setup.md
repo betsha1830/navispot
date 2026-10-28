@@ -236,7 +236,7 @@ When deploying to production, ensure:
 Example production `.env`:
 ```bash
 SPOTIFY_CLIENT_ID=your_production_client_id
-SPOTIFY_CLIENT_SECRET=your_production_client_secret
+SPOTIFY_CLIENT_SECRET=<paste-your-client-secret-here>
 SPOTIFY_REDIRECT_URI=https://navispotplist.yourdomain.com/api/auth/callback
 NEXT_PUBLIC_APP_URL=https://navispotplist.yourdomain.com
 ```
