@@ -32,6 +32,10 @@ WORKDIR /app
 ENV NODE_ENV production
 ENV NEXT_TELEMETRY_DISABLED=1
 
+# openssl and the TLS proxy are used only when ENABLE_HTTPS=true.
+# su-exec drops to nextjs for both HTTP and HTTPS.
+RUN apk add --no-cache openssl su-exec
+
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
 
@@ -44,11 +48,16 @@ RUN chown nextjs:nodejs .next
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 
-USER nextjs
+COPY docker/https-proxy.mjs /usr/local/bin/https-proxy.mjs
+COPY docker/entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN sed -i 's/\r$//' /usr/local/bin/docker-entrypoint.sh \
+  && chmod +x /usr/local/bin/docker-entrypoint.sh
 
+# Published port stays 3000. With ENABLE_HTTPS=true the proxy listens here
+# and Next moves to loopback :3001.
 EXPOSE 3000
 
 ENV PORT 3000
 ENV HOSTNAME "0.0.0.0"
 
-CMD ["node", "server.js"]
+ENTRYPOINT ["docker-entrypoint.sh"]

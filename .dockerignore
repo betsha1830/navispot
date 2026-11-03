@@ -34,6 +34,7 @@ bun.lockb
 Dockerfile
 docker-compose.yml
 .dockerignore
+certs
 *.log
 npm-debug.log*
 yarn-debug.log*
