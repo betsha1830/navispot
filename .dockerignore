@@ -33,6 +33,7 @@ bun.lockb
 # Misc
 Dockerfile
 docker-compose.yml
+docker-compose.dev.yml
 .dockerignore
 certs
 *.log
