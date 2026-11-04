@@ -150,7 +150,7 @@ docker run -d --name navispot \
   -e SSL_CERT_CN=localhost \
   -e SSL_CERT_SAN=DNS:localhost,IP:127.0.0.1 \
   -e SPOTIFY_CLIENT_ID=your_spotify_client_id \
-  -e SPOTIFY_CLIENT_SECRET=your_spotify_client_secret \
+  -e SPOTIFY_CLIENT_SECRET=your_secret \
   -e SPOTIFY_REDIRECT_URI=https://127.0.0.1:3883/api/auth/callback \
   -e NEXT_PUBLIC_APP_URL=https://127.0.0.1:3883 \
   -e NAVIDROME_URL=https://navidrome.example \
@@ -188,7 +188,7 @@ services:
       SSL_CERT_CN: localhost
       SSL_CERT_SAN: DNS:localhost,IP:127.0.0.1
       SPOTIFY_CLIENT_ID: your_spotify_client_id
-      SPOTIFY_CLIENT_SECRET: your_spotify_client_secret
+      SPOTIFY_CLIENT_SECRET: your_secret
       SPOTIFY_REDIRECT_URI: https://127.0.0.1:3883/api/auth/callback
       NEXT_PUBLIC_APP_URL: https://127.0.0.1:3883
       NAVIDROME_URL: https://navidrome.example
