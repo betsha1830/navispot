@@ -35,23 +35,46 @@ if [ -n "${SSL_KEY_PATH:-}" ] && [ -s "$KEY_FILE" ]; then
   key_supplied=1
 fi
 
+# SSL_CERT_PATH set and the file nonempty means the operator supplied it.
+# A certificate only present at the default path is generated output.
+cert_supplied=0
+if [ -n "${SSL_CERT_PATH:-}" ] && [ -s "$CERT_FILE" ]; then
+  cert_supplied=1
+fi
+
 if [ "$key_supplied" -eq 1 ] && [ ! -s "$CERT_FILE" ]; then
   echo "SSL_KEY_PATH is set but $CERT_FILE is missing or empty." >&2
   echo "Provide the matching certificate via SSL_CERT_PATH. The supplied key was not modified." >&2
   exit 1
 fi
 
-if [ "$key_supplied" -eq 0 ] && { [ ! -s "$CERT_FILE" ] || [ ! -s "$KEY_FILE" ]; }; then
+# Default key path, file already present, certificate missing: openssl -keyout
+# would replace that key. Refuse instead.
+if [ -z "${SSL_KEY_PATH:-}" ] && [ -s "$KEY_FILE" ] && [ ! -s "$CERT_FILE" ]; then
+  echo "Key $KEY_FILE exists but $CERT_FILE is missing or empty." >&2
+  echo "Provide the certificate via SSL_CERT_PATH, or remove the key so a pair can be generated. The key was not modified." >&2
+  exit 1
+fi
+
+if [ "$cert_supplied" -eq 1 ] && [ ! -s "$KEY_FILE" ]; then
+  echo "SSL_CERT_PATH is set but $KEY_FILE is missing or empty." >&2
+  echo "Provide the matching key via SSL_KEY_PATH. The supplied certificate was not modified." >&2
+  exit 1
+fi
+
+if [ "$key_supplied" -eq 0 ] && [ "$cert_supplied" -eq 0 ] && { [ ! -s "$CERT_FILE" ] || [ ! -s "$KEY_FILE" ]; }; then
   echo "Generating self-signed certificate (CN=${CN}, SAN=${SAN})"
   openssl req -x509 -newkey rsa:2048 -sha256 -days "$DAYS" -nodes \
     -keyout "$KEY_FILE" \
     -out "$CERT_FILE" \
     -subj "/CN=${CN}" \
     -addext "subjectAltName=${SAN}"
-  # Generated material only. 644 covers Windows bind mounts that ignore chown.
-  # This is a local self-signed cert, not a production key.
-  chmod 644 "$CERT_FILE" "$KEY_FILE" || true
-  chown nextjs:nodejs "$CERT_FILE" "$KEY_FILE" || true
+  # Leave the certificate mode as openssl created it. The new private key is
+  # readable only by nextjs (uid 1001). Windows bind mounts may ignore chown;
+  # if the server cannot read the key, fix it on the host:
+  #   chown 1001:1001 <key> && chmod 640 <key>
+  chmod 640 "$KEY_FILE" || true
+  chown nextjs:nodejs "$KEY_FILE" || true
 fi
 
 case "${NEXT_PUBLIC_APP_URL:-}" in
