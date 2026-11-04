@@ -1,27 +1,32 @@
+# Published image from CI (.github/workflows/ci.yml) on pushes to main.
+# To build from this checkout instead, use docker-compose.dev.yml.
 services:
   app:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: ghcr.io/betsha1830/navispot:latest
     ports:
       - "3883:3000"
     environment:
-      - NODE_ENV=production
+      NODE_ENV: production
+      # false = plain HTTP on http://127.0.0.1:3883 (previous behavior).
+      # true = HTTPS with a self-signed certificate on the same port.
+      # To include a LAN IP, set SSL_CERT_SAN and delete ./certs so the
+      # certificate is regenerated.
+      ENABLE_HTTPS: true
+      SSL_CERT_CN: localhost
+      SSL_CERT_SAN: DNS:localhost,IP:127.0.0.1
+    # Loaded into the container environment. The app reads process.env, not
+    # this file. With ENABLE_HTTPS true, point the public URL and the Spotify
+    # redirect at https://127.0.0.1:3883.
+    #   SPOTIFY_CLIENT_ID
+    #   SPOTIFY_CLIENT_SECRET
+    #   SPOTIFY_REDIRECT_URI
+    #   NEXT_PUBLIC_APP_URL
+    #   FORCE_SECURE_COOKIES   # optional; the entrypoint sets it when HTTPS is on
+    #   NAVIDROME_URL          # all three connect the login page automatically
+    #   NAVIDROME_USERNAME
+    #   NAVIDROME_PASSWORD
     env_file:
       - .env.local
+    volumes:
+      - ./certs:/certs
     restart: unless-stopped
-
-  # Optional: Navidrome instance for testing
-  # Uncomment to use a local Navidrome server. First login: the admin
-  # user is created from the credentials you use on first sign-in.
-  # navidrome:
-  #   image: deluan/navidrome:latest
-  #   ports:
-  #     - "4533:4533"
-  #   environment:
-  #     # Optional config — e.g. ND_LOGLEVEL: debug
-  #     # See https://www.navidrome.org/docs/usage/configuration/
-  #   volumes:
-  #     - ./data:/data
-  #     - ./music:/music:ro
-  #   restart: unless-stopped

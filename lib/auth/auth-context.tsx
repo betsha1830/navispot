@@ -90,6 +90,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setNavidrome((prev) => ({
           ...prev,
           isConnected: true,
+          credentials,
           serverVersion: 'Navidrome (native API)',
           error: null,
           token,
@@ -284,24 +285,57 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       const storedNavidrome = localStorage.getItem(NAVIDROME_STORAGE_KEY);
+      let navCreds: NavidromeCredentials | null = null;
+      let storedToken: string | null = null;
+      let storedClientId: string | null = null;
+
       if (storedNavidrome) {
         const parsed = JSON.parse(storedNavidrome);
-        const navCreds = { url: parsed.url, username: parsed.username, password: parsed.password };
+        navCreds = { url: parsed.url, username: parsed.username, password: parsed.password };
+        storedToken = parsed.token ?? null;
+        storedClientId = parsed.clientId ?? '';
+      } else {
+        try {
+          const response = await fetch('/api/navidrome/config');
+          if (response.ok) {
+            const data = await response.json();
+            if (data.configured && data.url && data.username && data.password) {
+              navCreds = { url: data.url, username: data.username, password: data.password };
+            }
+          }
+        } catch (error) {
+          console.error('Error loading Navidrome config:', error);
+        }
+      }
+
+      if (navCreds) {
         setNavidrome((prev) => ({
           ...prev,
           credentials: navCreds,
-          token: parsed.token ?? null,
-          clientId: parsed.clientId ?? '',
+          token: storedToken,
+          clientId: storedClientId,
         }));
         resolvedNavidrome = {
           isConnected: false,
           credentials: navCreds,
           serverVersion: null,
           error: null,
-          token: parsed.token ?? null,
-          clientId: parsed.clientId ?? '',
+          token: storedToken,
+          clientId: storedClientId,
         };
-        await testNavidromeConnection(navCreds);
+        const connected = await testNavidromeConnection(navCreds);
+        if (connected) {
+          const saved = localStorage.getItem(NAVIDROME_STORAGE_KEY);
+          const parsed = saved ? JSON.parse(saved) : {};
+          resolvedNavidrome = {
+            isConnected: true,
+            credentials: navCreds,
+            serverVersion: 'Navidrome (native API)',
+            error: null,
+            token: parsed.token ?? storedToken,
+            clientId: parsed.clientId ?? storedClientId,
+          };
+        }
       }
 
       if (!storedSpotify) {
