@@ -9,6 +9,7 @@
 > Export Spotify playlists to your self-hosted Navidrome music server
 
 [![Live Demo](https://img.shields.io/badge/Live%20Demo-navispot.gaga.pro.et-blue?style=flat&logo=vercel)](https://navispot.gaga.pro.et/)
+[![CI](https://github.com/ildoc/navispot/actions/workflows/ci.yml/badge.svg)](https://github.com/ildoc/navispot/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 ---
@@ -134,18 +135,94 @@ bun dev
 
 ### Docker (Recommended)
 
+CI publishes the public image `ghcr.io/ildoc/navispot:latest` on every push to `main`. The container listens on port 3000. These examples publish it as `https://127.0.0.1:3883`. The first start writes a self-signed certificate to the mounted certs directory; the browser warns until you trust it. Set `ENABLE_HTTPS=false` for plain HTTP on the same port.
+
+`NAVIDROME_URL`, `NAVIDROME_USERNAME`, and `NAVIDROME_PASSWORD` are optional. When all three are set, the login page connects to Navidrome without asking. Register `SPOTIFY_REDIRECT_URI` in the Spotify Developer Dashboard. For a public host, use that host instead of `127.0.0.1`.
+
+**`docker run` with each variable**
+
+```bash
+docker run -d --name navispot \
+  --restart unless-stopped \
+  -p 3883:3000 \
+  -v navispot-certs:/certs \
+  -e ENABLE_HTTPS=true \
+  -e SSL_CERT_CN=localhost \
+  -e SSL_CERT_SAN=DNS:localhost,IP:127.0.0.1 \
+  -e SPOTIFY_CLIENT_ID=your_spotify_client_id \
+  -e SPOTIFY_CLIENT_SECRET=your_spotify_client_secret \
+  -e SPOTIFY_REDIRECT_URI=https://127.0.0.1:3883/api/auth/callback \
+  -e NEXT_PUBLIC_APP_URL=https://127.0.0.1:3883 \
+  -e NAVIDROME_URL=https://navidrome.example \
+  -e NAVIDROME_USERNAME=your_username \
+  -e NAVIDROME_PASSWORD=your_password \
+  ghcr.io/ildoc/navispot:latest
+```
+
+**`docker run` with `.env.local`**
+
+`ENABLE_HTTPS` and the certificate names stay on the command line. Spotify and Navidrome come from the file.
+
+```bash
+docker run -d --name navispot \
+  --restart unless-stopped \
+  -p 3883:3000 \
+  -v navispot-certs:/certs \
+  -e ENABLE_HTTPS=true \
+  -e SSL_CERT_CN=localhost \
+  -e SSL_CERT_SAN=DNS:localhost,IP:127.0.0.1 \
+  --env-file .env.local \
+  ghcr.io/ildoc/navispot:latest
+```
+
+**Compose with each variable**
+
+```yaml
+services:
+  app:
+    image: ghcr.io/ildoc/navispot:latest
+    ports:
+      - "3883:3000"
+    environment:
+      ENABLE_HTTPS: true
+      SSL_CERT_CN: localhost
+      SSL_CERT_SAN: DNS:localhost,IP:127.0.0.1
+      SPOTIFY_CLIENT_ID: your_spotify_client_id
+      SPOTIFY_CLIENT_SECRET: your_spotify_client_secret
+      SPOTIFY_REDIRECT_URI: https://127.0.0.1:3883/api/auth/callback
+      NEXT_PUBLIC_APP_URL: https://127.0.0.1:3883
+      NAVIDROME_URL: https://navidrome.example
+      NAVIDROME_USERNAME: your_username
+      NAVIDROME_PASSWORD: your_password
+    volumes:
+      - ./certs:/certs
+    restart: unless-stopped
+```
+
+**Compose with `.env.local`**
+
+This is the `docker-compose.yml` in the repository.
+
+```yaml
+services:
+  app:
+    image: ghcr.io/ildoc/navispot:latest
+    ports:
+      - "3883:3000"
+    environment:
+      ENABLE_HTTPS: true
+      SSL_CERT_CN: localhost
+      SSL_CERT_SAN: DNS:localhost,IP:127.0.0.1
+    env_file:
+      - .env.local
+    volumes:
+      - ./certs:/certs
+    restart: unless-stopped
+```
+
 ```bash
 docker compose up -d
 ```
-
-**Production Variables:**
-
-```env
-SPOTIFY_REDIRECT_URI=https://your-domain.com/api/auth/callback # localhost: http://127.0.0.1:3000/api/auth/callback
-NEXT_PUBLIC_APP_URL=https://your-domain.com #localhost: http://127.0.0.1:3000
-```
-
-Update Spotify Dashboard with your production redirect URI.
 
 ### Live Site + Local Navidrome (Cloudflare Tunnel)
 
