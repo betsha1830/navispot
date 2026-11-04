@@ -25,19 +25,34 @@ DAYS="${SSL_CERT_DAYS:-825}"
 
 mkdir -p "$CERT_DIR"
 
-if [ ! -s "$CERT_FILE" ] || [ ! -s "$KEY_FILE" ]; then
+# A key passed in SSL_KEY_PATH is the operator's file. This script does not
+# chmod, chown, or overwrite it. The server runs as uid 1001 (nextjs). Grant
+# that user access without making the key world-readable:
+#   chown 1001:1001 /path/to/key.pem && chmod 640 /path/to/key.pem
+# Do not chmod 644 a supplied key.
+key_supplied=0
+if [ -n "${SSL_KEY_PATH:-}" ] && [ -s "$KEY_FILE" ]; then
+  key_supplied=1
+fi
+
+if [ "$key_supplied" -eq 1 ] && [ ! -s "$CERT_FILE" ]; then
+  echo "SSL_KEY_PATH is set but $CERT_FILE is missing or empty." >&2
+  echo "Provide the matching certificate via SSL_CERT_PATH. The supplied key was not modified." >&2
+  exit 1
+fi
+
+if [ "$key_supplied" -eq 0 ] && { [ ! -s "$CERT_FILE" ] || [ ! -s "$KEY_FILE" ]; }; then
   echo "Generating self-signed certificate (CN=${CN}, SAN=${SAN})"
   openssl req -x509 -newkey rsa:2048 -sha256 -days "$DAYS" -nodes \
     -keyout "$KEY_FILE" \
     -out "$CERT_FILE" \
     -subj "/CN=${CN}" \
     -addext "subjectAltName=${SAN}"
+  # Generated material only. 644 covers Windows bind mounts that ignore chown.
+  # This is a local self-signed cert, not a production key.
+  chmod 644 "$CERT_FILE" "$KEY_FILE" || true
+  chown nextjs:nodejs "$CERT_FILE" "$KEY_FILE" || true
 fi
-
-# World-readable so nextjs can read the key when a Windows bind mount
-# ignores chown. This is a local self-signed cert, not a production key.
-chmod 644 "$CERT_FILE" "$KEY_FILE" || true
-chown nextjs:nodejs "$CERT_DIR" "$CERT_FILE" "$KEY_FILE" || true
 
 case "${NEXT_PUBLIC_APP_URL:-}" in
   https://*) ;;

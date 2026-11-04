@@ -137,7 +137,7 @@ bun dev
 
 CI publishes the public image `ghcr.io/betsha1830/navispot:latest` on every push to `main`. The container listens on port 3000. These examples publish it as `https://127.0.0.1:3883`. The first start writes a self-signed certificate to the mounted certs directory; the browser warns until you trust it. Set `ENABLE_HTTPS=false` for plain HTTP on the same port.
 
-`NAVIDROME_URL`, `NAVIDROME_USERNAME`, and `NAVIDROME_PASSWORD` are optional. When all three are set, the login page connects to Navidrome without asking. Register `SPOTIFY_REDIRECT_URI` in the Spotify Developer Dashboard. For a public host, use that host instead of `127.0.0.1`.
+`NAVIDROME_URL`, `NAVIDROME_USERNAME`, and `NAVIDROME_PASSWORD` are optional. When all three are set and the browser has no saved Navidrome entry, the login page connects with them. A saved entry takes precedence over this server configuration. Register `SPOTIFY_REDIRECT_URI` in the Spotify Developer Dashboard. For a public host, use that host instead of `127.0.0.1`.
 
 **`docker run` with each variable**
 
