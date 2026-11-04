@@ -2,7 +2,7 @@
 # To build from this checkout instead, use docker-compose.dev.yml.
 services:
   app:
-    image: ghcr.io/ildoc/navispot:latest
+    image: ghcr.io/betsha1830/navispot:latest
     ports:
       - "3883:3000"
     environment:

@@ -9,7 +9,7 @@
 > Export Spotify playlists to your self-hosted Navidrome music server
 
 [![Live Demo](https://img.shields.io/badge/Live%20Demo-navispot.gaga.pro.et-blue?style=flat&logo=vercel)](https://navispot.gaga.pro.et/)
-[![CI](https://github.com/ildoc/navispot/actions/workflows/ci.yml/badge.svg)](https://github.com/ildoc/navispot/actions/workflows/ci.yml)
+[![CI](https://github.com/betsha1830/navispot/actions/workflows/ci.yml/badge.svg)](https://github.com/betsha1830/navispot/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 ---
@@ -135,7 +135,7 @@ bun dev
 
 ### Docker (Recommended)
 
-CI publishes the public image `ghcr.io/ildoc/navispot:latest` on every push to `main`. The container listens on port 3000. These examples publish it as `https://127.0.0.1:3883`. The first start writes a self-signed certificate to the mounted certs directory; the browser warns until you trust it. Set `ENABLE_HTTPS=false` for plain HTTP on the same port.
+CI publishes the public image `ghcr.io/betsha1830/navispot:latest` on every push to `main`. The container listens on port 3000. These examples publish it as `https://127.0.0.1:3883`. The first start writes a self-signed certificate to the mounted certs directory; the browser warns until you trust it. Set `ENABLE_HTTPS=false` for plain HTTP on the same port.
 
 `NAVIDROME_URL`, `NAVIDROME_USERNAME`, and `NAVIDROME_PASSWORD` are optional. When all three are set, the login page connects to Navidrome without asking. Register `SPOTIFY_REDIRECT_URI` in the Spotify Developer Dashboard. For a public host, use that host instead of `127.0.0.1`.
 
@@ -156,7 +156,7 @@ docker run -d --name navispot \
   -e NAVIDROME_URL=https://navidrome.example \
   -e NAVIDROME_USERNAME=your_username \
   -e NAVIDROME_PASSWORD=your_password \
-  ghcr.io/ildoc/navispot:latest
+  ghcr.io/betsha1830/navispot:latest
 ```
 
 **`docker run` with `.env.local`**
@@ -172,7 +172,7 @@ docker run -d --name navispot \
   -e SSL_CERT_CN=localhost \
   -e SSL_CERT_SAN=DNS:localhost,IP:127.0.0.1 \
   --env-file .env.local \
-  ghcr.io/ildoc/navispot:latest
+  ghcr.io/betsha1830/navispot:latest
 ```
 
 **Compose with each variable**
@@ -180,7 +180,7 @@ docker run -d --name navispot \
 ```yaml
 services:
   app:
-    image: ghcr.io/ildoc/navispot:latest
+    image: ghcr.io/betsha1830/navispot:latest
     ports:
       - "3883:3000"
     environment:
@@ -206,7 +206,7 @@ This is the `docker-compose.yml` in the repository.
 ```yaml
 services:
   app:
-    image: ghcr.io/ildoc/navispot:latest
+    image: ghcr.io/betsha1830/navispot:latest
     ports:
       - "3883:3000"
     environment:
